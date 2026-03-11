@@ -15,7 +15,7 @@ triptoe-mobile (Expo / React Native)  →  triptoe-backend (Flask)  →  Postgre
 
 - **Single provider** — All infrastructure runs on Railway to minimize operational complexity and cost
 - **Mobile-first** — The mobile app is the only client; there is no web frontend
-- **Self-contained auth** — Authentication is built into the backend (JWT + bcrypt), with no external auth provider
+- **Self-contained auth** — Authentication is built into the backend (Google OAuth for guides, email verification codes for guests, JWT via flask-jwt-extended)
 - **Push via Expo** — Push notifications use Expo Push Service, which abstracts APNs and FCM
 
 ## System Architecture
@@ -78,6 +78,8 @@ graph TB
 | `LoadingScreen` | Full-screen loading spinner |
 | `EmptyState` | Placeholder for empty lists |
 | `TimezonePicker` | Full-screen modal with searchable IANA timezone list |
+| `StatusBadge` | Tour status pill (upcoming, today, check-in open, in progress, completed) |
+| `TabBar` | Segmented pill-style tab bar (used for session grouping: This Week / Upcoming / Past) |
 
 #### Color Theme (TripToe Design System)
 
@@ -91,6 +93,31 @@ graph TB
 
 Each color has 50–900 shades defined in `tailwind.config.js`.
 
+#### Shared Utilities (`src/utils/`)
+
+| Utility | Purpose |
+|---|---|
+| `tourStatus.ts` | `getTourStatus()` — computes tour status (upcoming/today/check_in_open/in_progress/completed) from start/end datetimes and tour timezone |
+| `formatDate.ts` | `formatDate()`, `formatTime()`, `formatDateTime()`, `formatTimeRange()` — all display times in the tour template's timezone |
+| `apiError.ts` | `getApiError()` — extracts `error.response?.data?.error` with fallback |
+| `confirmAction.ts` | `confirmAction()` — reusable destructive action confirmation (Alert + async try/catch) |
+
+#### Shared Hooks (`src/hooks/`)
+
+| Hook | Purpose |
+|---|---|
+| `useHeaderBackButton.ts` | Adds a back arrow to the header that navigates via `router.replace()` (for hidden tab screens) |
+| `useSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) and auto-selects first non-empty tab |
+
+#### Timezone Strategy
+
+Three distinct timezones exist in the system: guide device, guest device, and tour template. The rules are:
+
+- **All tour times display in the tour template's timezone** — via `toLocaleString({ timeZone: tz })` on the frontend
+- **Status computation uses UTC math** — `getTourStatus()` compares UTC timestamps (timezone-agnostic), except the "today" check which compares dates in the tour's timezone
+- **Session creation sends naive ISO strings** — the frontend strips timezone offset; the backend interprets them in the tour template's timezone via `parse_local_datetime()`
+- **All datetimes stored in UTC** in the database
+
 #### Navigation
 
 Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
@@ -98,9 +125,25 @@ Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
 | Role | Tab 1 | Tab 2 | Tab 3 |
 |---|---|---|---|
 | Guide | My Tours (dashboard) | Create Tour | Profile |
-| Guest | My Tours (dashboard) | Scan QR | Profile |
+| Guest | My Tours (dashboard) | Join Tour (QR/code) | Profile |
 
-Non-tab screens (e.g. tour-details, create-instance, active-tour, signin, signup) are hidden from the tab bar with `href: null`.
+Non-tab screens (e.g. tour-details, create-session, edit-tour, tour-session-details, signin, signup) are hidden from the tab bar with `href: null`.
+
+#### Session Grouping (TabBar)
+
+Both the guide's tour sessions and the guest's My Tours dashboard group sessions into three tabs:
+
+| Tab | Contents | Sort |
+|---|---|---|
+| **This Week** | Non-completed sessions through Sunday | Ascending (soonest first) |
+| **Upcoming** | Non-completed sessions after this week | Ascending (soonest first) |
+| **Past** | Completed sessions | Descending (most recent first) |
+
+The default tab is the first non-empty one (This Week → Upcoming → Past). Logic is shared via the `useSessionTabs` hook and `TabBar` component.
+
+#### Guide Dashboard Sorting
+
+Tour templates on the guide's My Tours dashboard are sorted by nearest upcoming session first. The `GET /tours` API returns a `next_session_date` field (batch-queried) and each card shows "Next: [date]" when an upcoming session exists.
 
 ### Backend (triptoe-backend)
 
@@ -126,7 +169,7 @@ Non-tab screens (e.g. tour-details, create-instance, active-tour, signin, signup
 
 ## Data Model
 
-The data model follows a **template-schedule pattern**: guides create reusable tour templates, then schedule specific occurrences of those tours.
+The data model follows a **template-session pattern**: guides create reusable tour templates, then create sessions for specific occurrences of those tours.
 
 ### PostgreSQL Schemas
 
@@ -136,7 +179,7 @@ Tables are organized into five PostgreSQL schemas:
 |---|---|---|
 | `guide` | Guide and operator data | guide, operator, guide_operator_role |
 | `guest` | Guest accounts and location | guest, guest_location, verification_code |
-| `tour` | Tours, schedules, bookings | tour_template, tour_schedule, tour_booking, tour_checkin, archived_booking |
+| `tour` | Tours, sessions, bookings | tour_template, tour_session, tour_booking, tour_checkin, archived_booking |
 | `message` | Messaging system | message, message_read_receipt, messaging_consent, message_template, blocked_communication |
 | `shared` | Cross-cutting concerns | device_token |
 
@@ -147,18 +190,18 @@ erDiagram
     Operator ||--o{ TourTemplate : owns
     Operator ||--o{ GuideOperatorRole : has
     Guide ||--o{ GuideOperatorRole : has
-    Guide ||--o{ TourSchedule : leads
-    TourTemplate ||--o{ TourSchedule : "scheduled as"
-    TourSchedule ||--o{ TourBooking : has
-    TourSchedule ||--o{ TourCheckin : has
-    TourSchedule ||--o{ Message : contains
-    TourSchedule ||--o{ MessagingConsent : has
+    Guide ||--o{ TourSession : leads
+    TourTemplate ||--o{ TourSession : "has"
+    TourSession ||--o{ TourBooking : has
+    TourSession ||--o{ TourCheckin : has
+    TourSession ||--o{ Message : contains
+    TourSession ||--o{ MessagingConsent : has
     Guest ||--o{ TourBooking : makes
     Guest ||--o{ TourCheckin : performs
     Guest ||--o{ GuestLocation : reports
     Guest ||--o{ MessagingConsent : grants
     TourBooking ||--o{ TourCheckin : "linked to"
-    GuestLocation }o--|| TourSchedule : "during"
+    GuestLocation }o--|| TourSession : "during"
     Message ||--o{ MessageReadReceipt : has
     Guide ||--o{ MessageTemplate : creates
     Operator ||--o{ MessageTemplate : has
@@ -210,8 +253,8 @@ erDiagram
         string timezone
     }
 
-    TourSchedule {
-        int tour_schedule_id PK
+    TourSession {
+        int tour_session_id PK
         int tour_template_id FK
         string guide_uid FK
         datetime start_datetime
@@ -222,23 +265,24 @@ erDiagram
 
     TourBooking {
         int tour_booking_id PK
-        int tour_schedule_id FK
+        int tour_session_id FK
         string guest_uid FK
         datetime booked_at
     }
 
     TourCheckin {
         int tour_checkin_id PK
-        int tour_schedule_id FK
+        int tour_session_id FK
         string guest_uid FK
         int tour_booking_id FK
         datetime checkin_time
+        bool location_sharing_enabled
     }
 
     GuestLocation {
         int location_id PK
         string guest_uid FK
-        int tour_schedule_id FK
+        int tour_session_id FK
         float latitude
         float longitude
         float accuracy
@@ -247,7 +291,7 @@ erDiagram
 
     Message {
         int message_id PK
-        int tour_schedule_id FK
+        int tour_session_id FK
         string sender_uid
         string sender_type
         string recipient_uid
@@ -258,7 +302,7 @@ erDiagram
 
     MessagingConsent {
         int consent_id PK
-        int tour_schedule_id FK
+        int tour_session_id FK
         string guest_uid FK
         bool receive_guide_messages
         bool send_to_guide
@@ -286,15 +330,15 @@ erDiagram
 
 ### Key Design Decisions
 
-- **ID sequences start at 100000** — TourTemplate, TourSchedule, TourBooking, TourCheckin, and GuestLocation IDs start at 100000 for readability
+- **ID sequences start at 100000** — TourTemplate, TourSession, TourBooking, TourCheckin, and GuestLocation IDs start at 100000 for readability
 - **PostgreSQL schemas** — Tables grouped by domain (guide, guest, tour, message, shared) for logical separation
 - **PostGIS POINT type** — Meeting point coordinates stored as native PostgreSQL POINT type via a custom `PGPoint` SQLAlchemy type
 - **JSONB for flexible data** — QR code data, user preferences, branding, and message metadata use JSONB columns
 - **Timezone-aware datetimes** — All timestamps stored in UTC with timezone awareness; tour templates store a `timezone` field so times display in the tour's local timezone
-- **Duplicate schedule prevention** — Backend returns 409 if a schedule with matching template + start + end already exists
+- **Duplicate session prevention** — Backend returns 409 if a session with matching template + start + end already exists
 - **Soft deletes for messages** — Messages use `is_deleted` flag rather than hard deletes
-- **Archived bookings** — When a tour schedule is deleted, bookings are moved to an `ArchivedBooking` table rather than being lost
-- **Dependency-aware deletion** — Tour templates can only be deleted when they have no schedules; schedules can only be deleted when they have no bookings or check-ins
+- **Archived bookings** — When a tour session is deleted, bookings are moved to an `ArchivedBooking` table rather than being lost
+- **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins
 
 ## Authentication
 
@@ -303,10 +347,10 @@ erDiagram
 | User | First time | Returning |
 |---|---|---|
 | **Guide** | Google OAuth | Google OAuth |
-| **Guest** | Name + email (instant JWT) | Email + 6-digit verification code |
+| **Guest** | Name + email + 6-digit verification code | Email + 6-digit verification code |
 
 - **Guides** authenticate exclusively via Google OAuth. No passwords to manage.
-- **Guests** sign up with just a name and email for minimal friction (under 60 seconds for walk-up tourists). Returning guests verify identity via a 6-digit code sent to their email (expires in 10 minutes).
+- **Guests** sign up with name and email, then verify via a 6-digit code sent to their email (expires in 10 minutes). Returning guests sign in with just their email and a new verification code. Both flows are designed for minimal friction (under 60 seconds for walk-up tourists).
 
 ### Guide Auth Flow (Google OAuth)
 
@@ -335,9 +379,13 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Email as Email Service
 
-    Note over App, DB: Guest First-Time Signup
+    Note over App, Email: Guest First-Time Signup
     App->>API: POST /auth/guest/signup {name, email}
-    API->>DB: Insert Guest record
+    API->>API: Generate 6-digit code (expires in 10 min)
+    API->>DB: Store code hash + expiry
+    API->>Email: Send code to guest's email
+    App->>API: POST /auth/guest/signup/verify {email, name, code}
+    API->>DB: Verify code + create Guest record
     API->>App: {access_token, refresh_token, user}
 
     Note over App, Email: Returning Guest Sign In
@@ -379,11 +427,13 @@ sequenceDiagram
 
 ### How It Works
 
-1. Guest checks into a tour instance and enables location sharing
-2. Mobile app uses `expo-location` to watch position (foreground + background)
-3. Location updates sent to backend every 30 seconds via `POST /api/v1/location`
-4. Guide's map view polls `GET /api/v1/location/{tour_instance_id}` to fetch all guest positions
-5. Location tracking is only active during the tour's `start_datetime` to `end_datetime` window
+1. Guest checks into a tour session (check-in does **not** auto-start location sharing)
+2. Guest explicitly taps "Start Sharing Location" to opt in
+3. Mobile app uses `expo-location` to watch position (foreground)
+4. Location updates sent to backend via `POST /api/v1/location/update`
+5. Guide's map view polls `GET /api/v1/tour-sessions/{session_id}/locations` to fetch all guest positions
+6. Location sharing state (`location_sharing_enabled`) persists on the backend — if the app reloads during an active tour, sharing auto-resumes
+7. For completed tours, the "Start Sharing Location" button is hidden entirely
 
 ### Location Data Flow
 
@@ -396,12 +446,12 @@ sequenceDiagram
 
     Guest->>Guest: expo-location watchPosition()
     loop Every 30 seconds
-        Guest->>API: POST /location {lat, lng, accuracy}
+        Guest->>API: POST /location/update {tour_session_id, lat, lng, accuracy}
         API->>DB: Insert GuestLocation row
     end
 
     loop Guide polls (every 10s)
-        Guide->>API: GET /location/{tour_instance_id}
+        Guide->>API: GET /tour-sessions/{session_id}/locations
         API->>DB: Query latest location per guest
         DB->>API: GuestLocation records
         API->>Guide: [{guest_uid, lat, lng, accuracy, recorded_at}]
@@ -412,7 +462,7 @@ sequenceDiagram
 ### Privacy
 
 - Location is only collected when the guest has explicitly enabled sharing
-- Location sharing is scoped to a specific tour instance
+- Location sharing is scoped to a specific tour session
 - Sharing stops automatically when the tour ends
 - The `location_consent` flag is stored with each location record
 
@@ -466,13 +516,13 @@ device_token
 | Prefix | Purpose |
 |---|---|
 | `/api/v1/auth` | Signup, signin, token refresh |
-| `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/schedules` |
-| `/api/v1/tour-instances` | Tour schedule CRUD, QR generation |
+| `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/sessions` |
+| `/api/v1/tour-sessions` | Tour session CRUD, QR generation, guest locations, message history |
 | `/api/v1/guides/<uid>` | Guide-specific views (upcoming, in-progress, completed) |
-| `/api/v1/bookings` | Guest bookings (QR scan) and check-ins |
-| `/api/v1/checkins` | Guest check-in with location consent |
-| `/api/v1/location` | Guest location updates and queries |
-| `/api/v1/messages` | Messaging between guides and guests |
+| `/api/v1/bookings` | Guest bookings (by code or QR scan) |
+| `/api/v1/checkins` | Guest check-in, update location sharing preference |
+| `/api/v1/location` | Guest location updates, stop sharing |
+| `/api/v1/messages` | Broadcast and direct messaging |
 | `/api/v1/operators` | Operator management |
 | `/api/v1/device-token` | Push notification token registration |
 

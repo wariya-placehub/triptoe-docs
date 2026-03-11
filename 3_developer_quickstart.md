@@ -11,37 +11,11 @@ Install the following before proceeding:
 - **Python 3.11+** — [python.org/downloads](https://www.python.org/downloads/)
 - **Node.js 18+** — [nodejs.org](https://nodejs.org/)
 - **PostgreSQL 15+** — [postgresql.org/download](https://www.postgresql.org/download/) (includes pgAdmin)
-- **Android Studio** — [developer.android.com/studio](https://developer.android.com/studio)
 - **Git** — [git-scm.com](https://git-scm.com/)
 
-## 2. Set Up Android Environment
+## 2. Set Up Android Emulator
 
-Android Studio installs the Android SDK and a bundled JDK. Two environment variables must be set so that build tools can find them.
-
-Open PowerShell and run:
-
-```powershell
-# Set permanently (takes effect in new terminals)
-[System.Environment]::SetEnvironmentVariable("ANDROID_HOME", "C:\Users\<your-username>\AppData\Local\Android\Sdk", "User")
-[System.Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\Program Files\Android\Android Studio\jbr", "User")
-
-# Set for current terminal session immediately
-$env:ANDROID_HOME = "C:\Users\<your-username>\AppData\Local\Android\Sdk"
-$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-```
-
-Replace `<your-username>` with your Windows username.
-
-### Create an Android Emulator
-
-1. Open Android Studio
-2. From the Welcome screen, click **More Actions** > **Virtual Device Manager**
-3. If a device already exists (e.g. "Medium Phone API 36.1"), you can use it — skip to step 7
-4. Click **Create Virtual Device**
-5. Pick a phone (e.g. Pixel 7), click Next
-6. Download a system image (e.g. API 34 or latest), click Next, then **Finish**
-7. Click the play button (triangle) next to the device to start the emulator
-8. Wait until the Android home screen appears before continuing
+Follow the [Android Emulator Setup](4_android_emulator_setup.md) guide to install the Android SDK, Java, and create emulators. Come back here after completing steps 1-6.
 
 ## 3. Create the Database
 
@@ -133,7 +107,21 @@ All clients live in the same Google Cloud project:
 
 **For iOS**, create an OAuth client with application type **iOS** and bundle ID `com.triptoe.mobile`. The same iOS client works for both dev and prod.
 
-## 5. Set Up the Backend
+## 5. Google Maps API Key
+
+Required for displaying maps in the app (e.g. guest locations during a tour). Uses the same Google Cloud project from step 4.
+
+1. In Google Cloud Console, go to **APIs & Services** > **Library**
+2. Search for **Maps SDK for Android** and enable it
+3. Go to **Credentials** > **Create Credentials** > **API Key**
+4. Name it (e.g. "TripToe"), leave restrictions as **None** for development
+5. Click **Create** and copy the key
+
+The key is configured in `triptoe-mobile/app.json` under `expo.android.config.googleMaps.apiKey`. If you need to change it, edit that value and rebuild (`npx expo prebuild --clean` then `npx expo run:android`).
+
+Before going to production, restrict the key to **Android apps** with package name `com.triptoe.mobile`.
+
+## 6. Set Up the Backend
 
 ```bash
 cd triptoe-backend
@@ -166,7 +154,7 @@ CORS_ORIGINS=*
 
 Replace `yourpassword` with the password you set for the `postgres` user when you installed PostgreSQL. For `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, use the Web client credentials from step 4.
 
-## 6. Set Up the Mobile App
+## 7. Set Up the Mobile App
 
 ```bash
 cd triptoe-mobile
@@ -196,7 +184,7 @@ If Expo shows warnings about package version mismatches, run:
 npx expo install --fix
 ```
 
-## 7. Run the App
+## 8. Run the App
 
 ### Start the Backend
 
@@ -226,13 +214,13 @@ npx expo run:android
 
 The first build takes several minutes. Once complete, the app will open on the emulator. Subsequent builds are faster.
 
-## 8. Test the App
+## 9. Test the App
 
 ### Guest Flow
 1. Open the app on the emulator
 2. Tap "I'm a Guest"
-3. Sign up with name and email
-4. Scan a tour QR code to book
+3. Sign up with name and email, then enter the 6-digit code (check the backend console log for the code)
+4. Join a tour by entering the tour code or scanning a QR code
 5. Check in and share location during the tour
 
 ### Guide Flow
@@ -240,23 +228,20 @@ The first build takes several minutes. Once complete, the app will open on the e
 2. Sign in with Google
 3. Create a tour from the "Create Tour" tab (set title, duration, meeting place, timezone)
 4. From "My Tours" tab, tap a tour to see its details
-5. Tap "+ Schedule" to schedule a specific date/time for the tour
-6. View and manage scheduled tours from the tour details screen
+5. Tap "+ Session" to create a session for a specific date/time
+6. View and manage tour sessions from the tour details screen
 
 ### Returning Guest
 1. Tap "I'm a Guest" > "Already have an account? Sign in"
 2. Enter your email
-3. Enter the 6-digit code sent to your email
+3. Enter the 6-digit code (check the backend console log for the code)
 4. View booked tours on the dashboard
 
-## 9. Common Issues
+## 10. Common Issues
 
 | Issue | Solution |
 |-------|----------|
-| `adb` is not recognized | Set `ANDROID_HOME` environment variable — see step 2 |
-| `JAVA_HOME is not set` | Set `JAVA_HOME` to `C:\Program Files\Android\Android Studio\jbr` — see step 2 |
-| `No emulators could be started` | Start the emulator from Android Studio Virtual Device Manager first |
-| `adb device offline` | The emulator is still booting — wait for the Android home screen, then try again |
+| Emulator or ADB issues | See [Android Emulator Setup — Troubleshooting](4_android_emulator_setup.md#troubleshooting) |
 | `npm install` fails with peer dependency errors | Use `npm install --legacy-peer-deps` |
 | `react-dom/client could not be found` | Run `npm install react-dom --legacy-peer-deps` |
 | Backend can't connect to DB | Check `DATABASE_URL` in `.env` — ensure PostgreSQL is running and the `triptoe` database exists |
@@ -265,4 +250,4 @@ The first build takes several minutes. Once complete, the app will open on the e
 | Emulator window too tall / off-screen | Press `Ctrl+Down` to resize the emulator window to fit your screen |
 | `babel-preset-expo` not found during build | Run `npm install babel-preset-expo --legacy-peer-deps` and clear Gradle cache with `rm -rf android/.gradle` |
 
-For production deployment, see [Deployment Guide](4_deployment_guide.md).
+For production deployment, see [Deployment Guide](5_deployment_guide.md).

@@ -26,7 +26,7 @@ TripToe provides two connected experiences:
 **For Tour Guides:**
 
 - **Create tour templates** — Define reusable tours with a title, description, duration, and meeting point (with map coordinates).
-- **Schedule tour instances** — Pick dates and times for upcoming tours. Each instance gets a unique QR code for guest check-in.
+- **Create tour sessions** — Pick dates and times for upcoming tours. Each session gets a unique QR code for guest check-in.
 - **Track guests in real-time** — See every guest's location on a live map during the tour. Know immediately if someone falls behind or goes the wrong way.
 - **Send messages** — Push text messages to all guests or to individual guests. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies.
 - **Audio broadcast** — Broadcast voice to all guests' phones during the tour, replacing expensive radio equipment.
@@ -49,7 +49,7 @@ TripToe provides two connected experiences:
 
 1. Guide creates an account and sets up their profile
 2. Guide creates a tour template (e.g., "Historic Rome Walking Tour — 3 hours")
-3. Guide schedules a tour instance for a specific date and time
+3. Guide creates a tour session for a specific date and time
 4. On tour day, guide shares the QR code with arriving guests
 5. Guide starts the tour and monitors guest locations on the live map
 6. Guide sends messages as needed during the tour
@@ -58,7 +58,7 @@ TripToe provides two connected experiences:
 ```mermaid
 flowchart TD
     A[Create Account] --> B[Create Tour Template]
-    B --> C[Schedule Tour Instance]
+    B --> C[Create Tour Session]
     C --> D[Tour Day: Share QR Code]
     D --> E[Guests Check In]
     E --> F[Monitor Guest Locations on Map]
@@ -75,7 +75,7 @@ flowchart TD
 
 1. Guest arrives at the meeting point and sees the guide's QR code
 2. Guest scans the QR code, creates a quick account (or logs in)
-3. Guest is checked into the tour instance
+3. Guest is checked into the tour session
 4. Guest enables location sharing when prompted
 5. Guest receives messages from the guide throughout the tour
 6. After the tour, guest can tip the guide and view recommendations
@@ -102,7 +102,7 @@ flowchart TD
 
 ### Guide: Managing multiple check-ins
 
-Some tours have free-time segments (e.g., "Explore the market on your own for 30 minutes"). TripToe supports multiple check-ins per tour instance:
+Some tours have free-time segments (e.g., "Explore the market on your own for 30 minutes"). TripToe supports multiple check-ins per tour session:
 
 1. Initial check-in at tour start
 2. Guests disperse for free time (guide monitors locations)
@@ -129,8 +129,8 @@ flowchart TD
 
 | User | Description | How they sign up |
 |---|---|---|
-| **Guide** | Professional or freelance tour guide | Email/password account creation |
-| **Guest** | Tourist joining a tour | Quick signup (phone number), or QR code scan |
+| **Guide** | Professional or freelance tour guide | Google OAuth |
+| **Guest** | Tourist joining a tour | Quick signup (name + email), or QR code scan |
 
 ### Multi-Operator Support
 
@@ -139,14 +139,14 @@ Guides can work for multiple tour operators or companies. TripToe supports this 
 ### Tour Lifecycle
 
 ```
-Template Created  →  Instance Scheduled  →  Guests Check In  →  Tour Active  →  Tour Completed
+Template Created  →  Session Created  →  Guests Check In  →  Tour Active  →  Tour Completed
                                                                     │
                                                               Location tracking
                                                               Messaging
                                                               Audio broadcast
 ```
 
-- **Location tracking** is active only during the scheduled tour window
+- **Location tracking** is active only during the tour session window
 - **Messages** can be sent during the active tour
 - **Post-tour features** (tips, recommendations) are available after completion
 
@@ -162,7 +162,7 @@ TripToe is a **mobile-first** application. The product depends on native mobile 
 - **Guest signup time** — Target: under 60 seconds from QR scan to checked in
 - **Location accuracy** — Guests visible on map within 30 seconds of enabling sharing
 - **Message delivery** — Push notifications delivered within 5 seconds
-- **Guide adoption** — Guides can create and schedule their first tour within 10 minutes of signing up
+- **Guide adoption** — Guides can create their first tour session within 10 minutes of signing up
 
 ## Summary
 
@@ -171,18 +171,18 @@ TripToe is a **mobile-first** application. The product depends on native mobile 
 Implemented in the existing codebase and will carry over.
 
 **Guide Features:**
-- Account creation and authentication (email/password)
+- Account creation and authentication (Google OAuth)
 - Tour template creation and management
-- Tour instance scheduling with specific dates and times
+- Tour session creation with specific dates and times
 - QR code generation for guest check-in
-- Multiple check-ins per tour instance (start, after free time, etc.)
+- Multiple check-ins per tour session (start, after free time, etc.)
 - Real-time guest location tracking on interactive map
 - Broadcast and direct messaging to guests
 - Multi-operator support (guides working for multiple companies)
 
 **Guest Features:**
-- Quick signup (phone number) and QR code join
-- Check-in to tour instances
+- Quick signup (name + email) and QR code join
+- Check-in to tour sessions
 - Location sharing with automatic stop when tour ends
 - Receive messages from guide
 - Booking management
