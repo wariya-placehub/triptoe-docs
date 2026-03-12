@@ -49,7 +49,7 @@ TripToe provides two connected experiences:
 
 1. Guide creates an account and sets up their profile
 2. Guide creates a **Tour Template** (e.g., "Historic Rome Walking Tour — 3 hours")
-3. Guide creates a **Tour Session** for a specific date and time
+3. Guide creates **Tour Sessions** — a single session or a recurring series (daily, weekly, custom)
 4. On tour day, guide shares the session QR code with arriving guests
 5. Guide starts the tour and monitors guest locations on the live map
 6. Guide sends messages as needed during the session
@@ -173,7 +173,8 @@ Implemented in the existing codebase and will carry over.
 **Guide Features:**
 - Account creation and authentication (Google OAuth)
 - Tour template creation and management
-- Tour session creation with specific dates and times
+- Tour session creation with specific dates and times, including recurring sessions (daily, weekly, weekday, custom) with batch creation
+- Bulk session deletion (this session, this and following, all sessions)
 - QR code generation for guest check-in
 - Multiple check-ins per tour session (start, after free time, etc.)
 - Real-time guest location tracking on interactive map

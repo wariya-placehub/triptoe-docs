@@ -105,8 +105,9 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 
 | Utility | Purpose |
 |---|---|
-| `tourStatus.ts` | `getTourStatus()` — computes tour status; `getCheckinEligibility()` — determines check-in button state and message |
-| `formatDate.ts` | `formatDate()`, `formatTime()`, `formatDateTime()`, `formatTimeRange()`, `formatDateGroupLabel()` — all display times in the tour template's timezone |
+| `tourUtils.ts` | `getTourStatus()` — computes tour status; `getCheckinEligibility()` — determines check-in button state and message; `canDeleteSession()` — checks booking count and status |
+| `formatDate.ts` | `formatDate()`, `formatTime()`, `formatDateTime()`, `formatTimeRange()`, `formatDateGroupLabel()`, `formatDateWithYear()`, `formatTimeCompact()` — all display times in the tour template's timezone |
+| `recurrence.ts` | `generateRecurringSessions()` — generates batch session arrays from recurrence config (daily/weekly/weekday/custom); `wallClockToUTC()` / `pickerDateToUTCISO()` — timezone-safe conversion of picker values to UTC |
 | `apiError.ts` | `getApiError()` — extracts `error.response?.data?.error` with fallback |
 | `confirmAction.ts` | `confirmAction()` — reusable destructive action confirmation (Alert + async try/catch) |
 
@@ -144,7 +145,7 @@ Three distinct timezones exist in the system: guide device, guest device, and to
 
 - **All tour times display in the tour template's timezone** — via `toLocaleString({ timeZone: tz })` on the frontend. The session creation screen shows a "Times shown in [timezone]" label so guides know which timezone they're setting.
 - **Status computation uses UTC math** — `getTourStatus()` compares UTC timestamps (timezone-agnostic), except the "today" check which compares dates in the tour's timezone
-- **Session creation sends UTC ISO strings** — the frontend sends `Date.toISOString()` (with Z suffix), preserving the exact absolute moment. The backend's `parse_local_datetime()` handles both UTC strings (converts directly) and naive strings (interprets in tour template timezone as a fallback).
+- **Session creation uses wall-clock projection** — the date/time pickers return numbers in the phone's local timezone. The frontend extracts those wall-clock values (hour, minute, day) and projects them into the tour template's timezone using `wallClockToUTC()` before sending UTC ISO strings to the backend. This ensures a guide in New York scheduling a tour for 9:00 AM London time sends the correct UTC instant, not 9:00 AM New York time. Recurring session generation uses the same projection per-date to avoid DST drift.
 - **API responses always include timezone offset** — the backend serializes datetimes via Python's `.isoformat()` on UTC-aware objects, producing strings like `2026-03-11T15:30:00+00:00`. JavaScript's `new Date()` parses these correctly as UTC.
 - **All datetimes stored in UTC** in the database (PostgreSQL `DateTime(timezone=True)`)
 
@@ -171,7 +172,7 @@ Both the guide's tour sessions and the guest's My Tours dashboard group sessions
 | **Upcoming** | Non-completed sessions after this week | Ascending (soonest first) |
 | **Past** | Completed sessions | Descending (most recent first) |
 
-The default tab is the first non-empty one (This Week → Upcoming → Past). Logic is shared via the `useTourSessionTabs` hook and `TabBar` component.
+The default tab is the first non-empty one (This Week → Upcoming → Past). The guest dashboard uses client-side grouping via the `useTourSessionTabs` hook. The guide's tour sessions screen uses **server-side tab filtering with cursor pagination** (`GET /tours/<id>/sessions?tab=upcoming&limit=20&after=<cursor>`) and FlatList infinite scroll for large session lists.
 
 #### Guide Dashboard Sorting
 
@@ -370,7 +371,8 @@ erDiagram
 - **Duplicate session prevention** — Backend returns 409 if a session with matching template + start + end already exists
 - **Soft deletes for messages** — Messages use `is_deleted` flag rather than hard deletes
 - **Archived bookings** — When a tour session is deleted, bookings are moved to an `ArchivedBooking` table rather than being lost
-- **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins
+- **Batch session operations** — Sessions can be created in bulk via recurrence (daily/weekly/weekday/custom, up to 52 occurrences) and deleted in bulk (single, this and following, or all for a template). Batch delete skips sessions with bookings/check-ins and reports skipped IDs to the client.
+- **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins, and cannot be deleted when in progress or completed
 
 ## Authentication
 
@@ -551,8 +553,8 @@ device_token
 | Prefix | Purpose |
 |---|---|
 | `/api/v1/auth` | Signup, signin, token refresh |
-| `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/sessions` |
-| `/api/v1/tour-sessions` | Tour session CRUD, QR generation, guest locations, message history |
+| `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/sessions` (paginated with `tab`, `limit`, `after` params) |
+| `/api/v1/tour-sessions` | Tour session CRUD (single + batch create), `DELETE /tour-sessions/batch` (this_and_following / all), QR generation, guest locations, message history |
 | `/api/v1/guides` | Guide-specific views: `GET /guides/upcoming-sessions` (all upcoming sessions with template data, single JOIN query) |
 | `/api/v1/bookings` | Guest bookings (by code or QR scan) |
 | `/api/v1/checkins` | Guest check-in, update location sharing preference |
