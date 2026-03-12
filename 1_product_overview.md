@@ -25,22 +25,22 @@ TripToe provides two connected experiences:
 
 **For Tour Guides:**
 
-- **Create tour templates** — Define reusable tours with a title, description, duration, and meeting point (with map coordinates).
-- **Create tour sessions** — Pick dates and times for upcoming tours. Each session gets a unique QR code for guest check-in.
-- **Track guests in real-time** — See every guest's location on a live map during the tour. Know immediately if someone falls behind or goes the wrong way.
-- **Send messages** — Push text messages to all guests or to individual guests. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies.
-- **Audio broadcast** — Broadcast voice to all guests' phones during the tour, replacing expensive radio equipment.
-- **Post-tour engagement** — Share restaurant recommendations, local tips, or social media links after the tour ends.
+- **Create Tour Templates** — Define reusable tours with a title, description, duration, and meeting point (with map coordinates).
+- **Create Tour Sessions** — Pick dates and times for specific occurrences of a template. Each session gets a unique QR code for guest check-in.
+- **Track guests in real-time** — See every guest's location on a live map during the tour session. Know immediately if someone falls behind or goes the wrong way.
+- **Send messages** — Push text messages to all guests or to individual guests within a session. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies.
+- **Audio broadcast** — Broadcast voice to all guests' phones during the tour session, replacing expensive radio equipment.
+- **Post-tour engagement** — Share restaurant recommendations, local tips, or social media links after the tour session ends.
 
 **For Tour Guests:**
 
-- **Quick signup** — Designed for walk-up tourists. Minimal friction to create an account and join a tour within minutes.
-- **Join via QR code** — Scan the guide's QR code to instantly join the tour. No searching, no typing tour codes.
-- **Location sharing** — Opt-in to share location during the tour so the guide can keep track of the group. Location sharing stops automatically when the tour ends.
+- **Quick signup** — Designed for walk-up tourists. Minimal friction to create an account and join a tour session within minutes.
+- **Join via QR code** — Scan the guide's QR code to instantly join the tour session. No searching, no typing codes.
+- **Location sharing** — Opt-in to share location during the tour session so the guide can keep track of the group. Location sharing stops automatically when the session ends.
 - **Receive messages** — Get real-time messages from the guide on your phone. Never miss an instruction.
 - **Listen to audio** — Hear the guide's broadcast directly on your phone, even in noisy environments.
-- **Pay tips** — Tip the guide directly through the app after the tour.
-- **Discover nearby tours** — Find tours starting soon near your current location (e.g. "tours starting within 30 minutes within 10 miles").
+- **Pay tips** — Tip the guide directly through the app after the tour session.
+- **Discover nearby tours** — Find tour sessions starting soon near your current location.
 - **Get recommendations** — Access the guide's restaurant and activity recommendations for the area.
 
 ## Key User Journeys
@@ -48,12 +48,12 @@ TripToe provides two connected experiences:
 ### Guide: Setting up and running a tour
 
 1. Guide creates an account and sets up their profile
-2. Guide creates a tour template (e.g., "Historic Rome Walking Tour — 3 hours")
-3. Guide creates a tour session for a specific date and time
-4. On tour day, guide shares the QR code with arriving guests
+2. Guide creates a **Tour Template** (e.g., "Historic Rome Walking Tour — 3 hours")
+3. Guide creates a **Tour Session** for a specific date and time
+4. On tour day, guide shares the session QR code with arriving guests
 5. Guide starts the tour and monitors guest locations on the live map
-6. Guide sends messages as needed during the tour
-7. After the tour, guide shares recommendations and receives tips
+6. Guide sends messages as needed during the session
+7. After the session, guide shares recommendations and receives tips
 
 ```mermaid
 flowchart TD
@@ -65,7 +65,7 @@ flowchart TD
     F --> G{Need to communicate?}
     G -->|Yes| H[Send Message to Guests]
     H --> F
-    G -->|No| I{Tour ended?}
+    G -->|No| I{Session ended?}
     I -->|No| F
     I -->|Yes| J[Share Recommendations]
     J --> K[Receive Tips]
@@ -73,12 +73,12 @@ flowchart TD
 
 ### Guest: Joining and experiencing a tour
 
-1. Guest arrives at the meeting point and sees the guide's QR code
+1. Guest arrives at the meeting point and sees the guide's session QR code
 2. Guest scans the QR code, creates a quick account (or logs in)
-3. Guest is checked into the tour session
+3. Guest is checked into the **Tour Session**
 4. Guest enables location sharing when prompted
-5. Guest receives messages from the guide throughout the tour
-6. After the tour, guest can tip the guide and view recommendations
+5. Guest receives messages from the guide throughout the session
+6. After the session, guest can tip the guide and view recommendations
 
 ```mermaid
 flowchart TD
@@ -86,14 +86,14 @@ flowchart TD
     B --> C{Have account?}
     C -->|No| D[Quick Signup]
     C -->|Yes| E[Log In]
-    D --> F[Check In to Tour]
+    D --> F[Check In to Session]
     E --> F
     F --> G[Enable Location Sharing]
-    G --> H[Tour Active]
+    G --> H[Session Active]
     H --> I{Receive message?}
     I -->|Yes| J[View Message]
     J --> H
-    I -->|No| K{Tour ended?}
+    I -->|No| K{Session ended?}
     K -->|No| H
     K -->|Yes| L[Location Sharing Stops]
     L --> M[Tip Guide]
@@ -104,23 +104,23 @@ flowchart TD
 
 Some tours have free-time segments (e.g., "Explore the market on your own for 30 minutes"). TripToe supports multiple check-ins per tour session:
 
-1. Initial check-in at tour start
+1. Initial check-in at session start
 2. Guests disperse for free time (guide monitors locations)
 3. Re-check-in when the group reconvenes
 4. Tour continues
 
 ```mermaid
 flowchart TD
-    A[Tour Starts] --> B[Initial Check-In]
-    B --> C[Guided Tour Segment]
+    A[Session Starts] --> B[Initial Check-In]
+    B --> C[Guided Segment]
     C --> D{Free time?}
     D -->|Yes| E[Guests Disperse]
     E --> F[Guide Monitors Locations]
     F --> G[Re-Check-In]
     G --> C
-    D -->|No| H{Tour ended?}
+    D -->|No| H{Session ended?}
     H -->|No| C
-    H -->|Yes| I[Tour Complete]
+    H -->|Yes| I[Session Complete]
 ```
 
 ## Product Details

@@ -226,16 +226,17 @@ The first build takes several minutes. Once complete, the app will open on the e
 ### Guide Flow
 1. Tap "I'm a Tour Guide"
 2. Sign in with Google
-3. Create a tour from the "Create Tour" tab (set title, duration, meeting place, timezone)
-4. From "My Tours" tab, tap a tour to see its details
-5. Tap "+ Session" to create a session for a specific date/time
-6. View and manage tour sessions from the tour details screen
+3. Create a **Tour Template** from the "Create Tour" tab (set title, duration, meeting place, timezone)
+4. From "My Tours" tab, tap a tour to see its sessions
+5. Tap "+ Session" to create a **Tour Session** for a specific date/time
+6. View and manage tour sessions from the tour template sessions screen
+7. Tap a specific session to see the live map and guest check-ins
 
 ### Returning Guest
 1. Tap "I'm a Guest" > "Already have an account? Sign in"
 2. Enter your email
 3. Enter the 6-digit code (check the backend console log for the code)
-4. View booked tours on the dashboard
+4. View booked tour sessions on the dashboard (My Tours)
 
 ## 10. Common Issues
 

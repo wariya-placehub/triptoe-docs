@@ -44,11 +44,13 @@ graph LR
 - **After that**: Metro watches your code and pushes changes to the app automatically
 - **The app** talks to the Flask backend through `10.0.2.2` (the emulator's way of reaching your computer's localhost)
 
-## 1. Install Android SDK (Command Line Tools)
+## 1. Installation
+
+### Android SDK (Command Line Tools)
 
 If you don't already have the Android SDK at `C:\Users\<your-username>\AppData\Local\Android\Sdk`, download **"Command line tools only"** from the bottom of the Android developer downloads page and extract to `C:\Android\Sdk`.
 
-## 2. Install Java (OpenJDK 17)
+### Java (OpenJDK 17)
 
 ```powershell
 winget install Microsoft.OpenJDK.17
@@ -62,7 +64,7 @@ ls "C:\Program Files\Microsoft\jdk*"
 
 Note the exact folder name (e.g. `jdk-17.0.18.8-hotspot`).
 
-## 3. Set Environment Variables
+## 2. Set Environment Variables
 
 Open **Windows Settings > System > About > Advanced system settings > Environment Variables**.
 
@@ -90,17 +92,17 @@ $env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-17.0.18.8-hotspot"
 $env:Path += ";$env:ANDROID_HOME\emulator;$env:ANDROID_HOME\platform-tools"
 ```
 
-## 4. Check Existing Emulators
+## 3. Create Emulators
+
+Check if you already have emulators:
 
 ```powershell
 emulator -list-avds
 ```
 
-If you see devices listed (e.g. `Pixel_7`, `Pixel_8`), skip to step 6.
+If you see devices listed (e.g. `Pixel_7`, `Pixel_8`), skip to step 4.
 
-## 5. Create Emulators
-
-If no AVDs exist, create them:
+If no AVDs exist, install SDK packages and create them:
 
 ```powershell
 # Install required SDK packages
@@ -111,7 +113,7 @@ avdmanager create avd -n Pixel_7 -k "system-images;android-35;google_apis;x86_64
 avdmanager create avd -n Pixel_8 -k "system-images;android-35;google_apis;x86_64" -d pixel_8
 ```
 
-## 6. Start Emulators
+## 4. Start Emulators
 
 Open two separate terminals. Start one emulator in each:
 
@@ -127,7 +129,7 @@ emulator -avd Pixel_8 -no-snapshot
 
 Wait for both to reach the Android home screen. The `-no-snapshot` flag forces a clean boot, which avoids input and boot issues.
 
-## 7. Verify Devices Are Connected
+Verify both emulators are connected:
 
 ```powershell
 adb devices
@@ -142,7 +144,7 @@ emulator-5556   device
 
 Device IDs are assigned in order of startup: the first emulator started gets `emulator-5554`, the second gets `emulator-5556`. If a device shows `offline`, wait for it to finish booting.
 
-## 8. Build and Install the App
+## 5. Build and Install the App
 
 Make sure the backend is running first (`python main.py` in `triptoe-backend`).
 
@@ -193,9 +195,9 @@ If Metro won't start because port 8081 is busy:
 npx kill-port 8081
 ```
 
-## 9. Metro Bundler
+## 6. Metro Bundler
 
-`npx expo run:android` (from step 8) already starts Metro for you. Do **not** run `npx expo start` separately while it's running — you'll get port conflicts.
+`npx expo run:android` (from step 5) already starts Metro for you. Do **not** run `npx expo start` separately while it's running — you'll get port conflicts.
 
 Both emulators connect to the same Metro server automatically.
 
@@ -217,39 +219,56 @@ npx expo start --clear
 
 After restarting Metro, press `r` in the terminal to reload the app on both emulators. If an emulator doesn't respond to `r`, force close the app on that emulator and reopen it.
 
-## 10. Daily Workflow
+## 7. Testing Location Sharing (Background Updates)
 
-Once the initial setup is done, your daily workflow is:
+TripToe uses a **Foreground Service** for real-time location sharing. This requires specific permissions and configurations, especially on Android 14+.
 
-1. Start the backend: `python main.py` (in `triptoe-backend`)
-2. Start emulator(s): `emulator -avd Pixel_7` (and `Pixel_8` if testing both roles)
-3. Start Metro: `npx expo start` (in `triptoe-mobile`)
-4. Open TripToe on the emulator(s)
+### Required Permissions
 
-You do NOT need to rebuild (`npx expo run:android`) unless you:
-- Change native code or add a new native package
-- Change `.env` values (rebuild once, then install APK on both emulators)
+When the app asks for location, you must follow these steps on the **Guest** emulator:
+1. **Initial Prompt**: Select **"While using the app"**.
+2. **Background Prompt**: Android will likely ask for "Background Location". Choose **"Allow in settings"** (or similar).
+3. **Settings Screen**: Find **TripToe** in the list, select **Location**, and change it to **"Allow all the time"**.
+4. **Notifications**: On Android 13+, you **must** allow notifications for the foreground service to display its required status bar notification.
 
-For JavaScript-only changes, Metro hot-reloads automatically.
+### Verifying the Service
+
+If location sharing is working correctly:
+- A **persistent notification** should appear in the Android notification drawer: "TripToe — Sharing your location with your tour guide".
+- A **location icon** will appear in the top status bar.
+- The Guide app (on the other emulator) will show a blue marker for the Guest.
+
+### Troubleshooting Location Service
+
+If you get `startLocationUpdatesAsync has been rejected`:
+
+1. **Verify Manifest**: Ensure `AndroidManifest.xml` has `FOREGROUND_SERVICE_LOCATION` and `LocationTaskService` declared (see `app.json` permissions).
+2. **Full Reinstall**: Native permission changes often require a clean install:
+   ```powershell
+   adb -s emulator-5556 uninstall com.triptoe.mobile
+   adb -s emulator-5556 install -r android/app/build/outputs/apk/debug/app-debug.apk
+   ```
+3. **Check System Location**: Ensure the emulator's system-wide location is ON:
+   ```powershell
+   adb -s emulator-5556 shell settings put secure location_mode 3
+   ```
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| `emulator` is not recognized | Add `%ANDROID_HOME%\emulator` to your PATH — see step 3 |
-| `adb` is not recognized | Add `%ANDROID_HOME%\platform-tools` to your PATH — see step 3 |
-| `JAVA_HOME is set to an invalid directory` | Set `JAVA_HOME` permanently in environment variables — see step 3 |
+| `emulator` is not recognized | Add `%ANDROID_HOME%\emulator` to your PATH — see step 2 |
+| `adb` is not recognized | Add `%ANDROID_HOME%\platform-tools` to your PATH — see step 2 |
+| `JAVA_HOME is set to an invalid directory` | Set `JAVA_HOME` permanently in environment variables — see step 2 |
 | Emulator stuck on Android logo for 10+ min | Close it, restart with `emulator -avd <name> -no-snapshot` |
 | Emulator black screen | Click power button on emulator toolbar or press home button to wake it |
 | Can't type in emulator | Restart emulator with `-no-snapshot` flag |
+| `startLocationUpdatesAsync` rejected | Manifest mismatch or missing "Allow all the time" permission. Uninstall and reinstall the APK — see step 7 |
+| Notification not showing | Check App Info > Notifications. Must be ON for foreground services to work |
+| Map is blank/gray | Ensure Google Maps API key is valid in `app.json` and emulator has internet |
 | App shows "Checking info..." spinner | App lost connection to Metro. Force close the app, make sure Metro is running (`npx expo start`), reopen the app |
-| App still shows "Checking info..." after restart | Reinstall: `adb -s <device-id> install -r android/app/build/outputs/apk/debug/app-debug.apk` |
 | Both emulators reload when pressing `r` | Normal — one Metro server serves both emulators |
-| Only one emulator reloads on `r` | The other lost Metro connection. Force close and reopen the app on it |
 | `Port 8081 is being used` | Kill the old process: `npx kill-port 8081`, then restart Metro |
-| "Play Protect not certified" warning | Dismiss it. Not needed for Expo development |
-| Google Sign-In fails | Expected on emulators without full Google Play Services. Test on a physical device |
-| Push notifications don't work | Expected on emulators. Test on a physical device |
 | App icon not updating after change | Uninstall first (`adb uninstall com.triptoe.mobile`), then run `npx expo prebuild --clean` and `npx expo run:android` |
 | Changed `app.json` but nothing happened | `app.json` changes (icon, permissions, name) require `npx expo prebuild --clean` then `npx expo run:android` |
-| Port 8081 busy | Run `npx kill-port 8081` then restart Metro |
+

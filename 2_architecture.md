@@ -107,7 +107,19 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 | Hook | Purpose |
 |---|---|
 | `useHeaderBackButton.ts` | Adds a back arrow to the header that navigates via `router.replace()` (for hidden tab screens) |
-| `useSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) and auto-selects first non-empty tab |
+| `useSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) |
+| `useTourStatus.ts` | Calculates and periodically updates the tour status (heartbeat) |
+
+#### Real-time Updates (Silent Polling Strategy)
+
+To ensure the UI stays updated without jarring loading spinners, the app uses a **Silent Polling Strategy**:
+
+- **Initial Load**: Shows `LoadingScreen` and resets component state.
+- **Background Refresh**: Every 25–30 seconds, the app fetches fresh data from the API and updates state "silently."
+- **Affected Screens**:
+    - `tour_session_details.tsx`: Updates guest list and check-in counts.
+    - `tour_booking_details.tsx`: Updates session metadata and status.
+- **Auto-Termination**: Polling intervals are cleared automatically when the tour status transitions to `completed`.
 
 #### Timezone Strategy
 
@@ -127,7 +139,9 @@ Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
 | Guide | My Tours (dashboard) | Create Tour | Profile |
 | Guest | My Tours (dashboard) | Join Tour (QR/code) | Profile |
 
-Non-tab screens (e.g. tour-details, create-session, edit-tour, tour-session-details, signin, signup) are hidden from the tab bar with `href: null`.
+Non-tab screens are hidden from the tab bar with `href: null`:
+- **Guide**: `tour_sessions`, `tour_session_details`, `create_tour_session`, `edit_tour_template`, `signin`
+- **Guest**: `tour_booking_details`, `join_tour_session`, `signin`, `signup`
 
 #### Session Grouping (TabBar)
 
@@ -169,7 +183,7 @@ Tour templates on the guide's My Tours dashboard are sorted by nearest upcoming 
 
 ## Data Model
 
-The data model follows a **template-session pattern**: guides create reusable tour templates, then create sessions for specific occurrences of those tours.
+The data model follows a **template-session pattern**: guides create reusable **Tour Templates**, then create **Tour Sessions** for specific occurrences of those tours.
 
 ### PostgreSQL Schemas
 
@@ -429,11 +443,13 @@ sequenceDiagram
 
 1. Guest checks into a tour session (check-in does **not** auto-start location sharing)
 2. Guest explicitly taps "Start Sharing Location" to opt in
-3. Mobile app uses `expo-location` to watch position (foreground)
-4. Location updates sent to backend via `POST /api/v1/location/update`
-5. Guide's map view polls `GET /api/v1/tour-sessions/{session_id}/locations` to fetch all guest positions
-6. Location sharing state (`location_sharing_enabled`) persists on the backend — if the app reloads during an active tour, sharing auto-resumes
-7. For completed tours, the "Start Sharing Location" button is hidden entirely
+3. Mobile app requests **Foreground Permissions** and then **Background Location** permission ("Allow all the time").
+4. The app starts a **Foreground Service** (required for Android 14+).
+5. A persistent notification is shown to the user while sharing is active.
+6. Mobile app uses `expo-location` + `TaskManager` to update position even when the app is in the background.
+7. Location updates sent to backend via `POST /api/v1/location/update`
+8. Guide's map view polls `GET /api/v1/tour-sessions/{session_id}/locations` every 10s.
+9. Location sharing stops automatically when the tour ends or the user taps "Stop Sharing".
 
 ### Location Data Flow
 
@@ -444,8 +460,9 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Guide as Guide App
 
-    Guest->>Guest: expo-location watchPosition()
-    loop Every 30 seconds
+    Guest->>Guest: Start Foreground Service
+    Note right of Guest: Persistent Notification shown
+    loop Every 10-30 seconds
         Guest->>API: POST /location/update {tour_session_id, lat, lng, accuracy}
         API->>DB: Insert GuestLocation row
     end
@@ -459,12 +476,12 @@ sequenceDiagram
     end
 ```
 
-### Privacy
+### Privacy & Technical Requirements
 
-- Location is only collected when the guest has explicitly enabled sharing
-- Location sharing is scoped to a specific tour session
-- Sharing stops automatically when the tour ends
-- The `location_consent` flag is stored with each location record
+- **Consent**: Location is only collected when the guest has explicitly enabled sharing.
+- **Android 14+**: Requires `FOREGROUND_SERVICE_LOCATION` permission and `foregroundServiceType="location"` in the Manifest.
+- **Background Access**: User must manually select "Allow all the time" in Android settings.
+- **Notifications**: Notification permission must be granted for the foreground service to run.
 
 ## Push Notifications
 

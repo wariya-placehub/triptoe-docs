@@ -21,7 +21,7 @@ Checklist of remaining work before production launch.
 - [ ] Test Google Sign-In on a physical device
 - [ ] Set up EAS Build for production builds
 - [ ] App store listing (Google Play, Apple App Store)
-- [ ] Implement background location tracking (expo-location background mode)
+- [x] Implement background location tracking (expo-location background mode)
 
 ## Features
 - [x] Guide: edit tour template details (edit-tour screen)
@@ -31,12 +31,17 @@ Checklist of remaining work before production launch.
 - [x] Guest: location sharing is opt-in (not auto-started on check-in)
 - [x] Guest: location sharing state persists across app reloads
 - [x] Guest: completed tours hide location sharing and check-in buttons
+- [x] Real-time Updates: Silent polling implemented for dashboards and details
 - [ ] Guide: edit profile (name, languages, specialties)
 - [ ] Guest: edit profile (name, notification preferences)
 - [ ] Guest: receive push notification when tour session is about to start
 - [ ] Guide: send messages to booked guests
-- [ ] Guest: view guide location during tour (if guide shares)
+- [x] Guest: view guide location during tour (if guide shares)
 - [ ] Offline support / graceful error handling for poor connectivity
+
+## Technical Debt
+- [x] Standardize naming convention (Tour Templates vs. Tour Sessions) across code and services.
+- [ ] AndroidManifest.xml was manually edited to add `foregroundServiceType="location"` for background location tracking. This means `app.json` no longer fully describes the app's native needs. Investigate using a Config Plugin for expo-location to inject this automatically during `npx expo prebuild`.
 
 ## Known Issues
 - [ ] Emulator needs `r` (reload) after .env changes to pick up new values
