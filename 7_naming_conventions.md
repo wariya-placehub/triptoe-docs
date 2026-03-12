@@ -27,6 +27,7 @@ Files use **kebab-case** with the full entity name:
 ```
 app/(guide)/
   dashboard.tsx              # GuideDashboard
+  schedule.tsx               # GuideSchedule (day planner with DateStrip + SectionList)
   create-tour-template.tsx   # CreateTourTemplate
   edit-tour-template.tsx     # EditTourTemplate
   tour-sessions.tsx          # TourSessions (list)
@@ -52,8 +53,14 @@ src/services/location.ts     # Location tracking API calls
 src/utils/tourStatus.ts      # Tour status logic (getTourStatus, getCheckinEligibility)
 src/utils/formatDate.ts      # Date/time formatting helpers
 src/hooks/usePollingInterval.ts
-src/hooks/useSessionTabs.ts
+src/hooks/useTourSessionTabs.ts
+src/hooks/useQRModal.ts          # QR modal state management
+src/hooks/useGuideUpcomingTourSessions.ts  # Fetch all upcoming tour sessions (single API call)
+src/components/tour/TourSessionCard.tsx  # Reusable session card (titleMode: 'date' | 'tour')
+src/components/tour/QRModal.tsx      # QR code modal
+src/components/tour/DateStrip.tsx    # Horizontal date pills for schedule
 src/config/location.ts       # Polling intervals, distance thresholds
+src/config/tour.ts           # CHECKIN_WINDOW_MINUTES
 ```
 
 ---
@@ -86,6 +93,9 @@ bookTourByQR(qrData)
 bookTourByCode(tourSessionId)
 cancelBooking(bookingId)
 getMyBookings()
+
+// Guide aggregate
+getGuideUpcomingTourSessions()   // All upcoming sessions with template data
 
 // Check-ins
 checkIn(tourSessionId, locationSharingEnabled)
@@ -197,6 +207,7 @@ The tab title in `_layout.tsx` controls what the customer sees. The file name co
 /tour-sessions/<tour_session_id>/guests
 /tour-sessions/<tour_session_id>/qr
 /tour-sessions/<tour_session_id>/locations
+/guides/upcoming-sessions        # All upcoming sessions (JOIN query)
 /bookings/qr-scan
 /bookings/<booking_id>
 /checkins

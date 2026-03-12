@@ -81,6 +81,14 @@ graph TB
 | `StatusBadge` | Tour status pill (upcoming, today, check-in open, in progress, completed) |
 | `TabBar` | Segmented pill-style tab bar (used for session grouping: This Week / Upcoming / Past) |
 
+#### Tour Components (`src/components/tour/`)
+
+| Component | Purpose |
+|---|---|
+| `TourSessionCard` | Unified session card used in tour-sessions and schedule screens. `titleMode` prop controls bold top line: `'date'` (under tour header) or `'tour'` (under date header). |
+| `QRModal` | Full-screen QR code modal for a tour session (reused across screens) |
+| `DateStrip` | Horizontal scrollable date pills for the schedule tab. Auto-scrolls to active date, highlights today. |
+
 #### Color Theme (TripToe Design System)
 
 | Token | Base Color | Usage |
@@ -97,8 +105,8 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 
 | Utility | Purpose |
 |---|---|
-| `tourStatus.ts` | `getTourStatus()` — computes tour status (upcoming/today/check_in_open/in_progress/completed) from start/end datetimes and tour timezone |
-| `formatDate.ts` | `formatDate()`, `formatTime()`, `formatDateTime()`, `formatTimeRange()` — all display times in the tour template's timezone |
+| `tourStatus.ts` | `getTourStatus()` — computes tour status; `getCheckinEligibility()` — determines check-in button state and message |
+| `formatDate.ts` | `formatDate()`, `formatTime()`, `formatDateTime()`, `formatTimeRange()`, `formatDateGroupLabel()` — all display times in the tour template's timezone |
 | `apiError.ts` | `getApiError()` — extracts `error.response?.data?.error` with fallback |
 | `confirmAction.ts` | `confirmAction()` — reusable destructive action confirmation (Alert + async try/catch) |
 
@@ -107,8 +115,17 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 | Hook | Purpose |
 |---|---|
 | `useHeaderBackButton.ts` | Adds a back arrow to the header that navigates via `router.replace()` (for hidden tab screens) |
-| `useSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) |
+| `useTourSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) |
 | `useTourStatus.ts` | Calculates and periodically updates the tour status (heartbeat) |
+| `useQRModal.ts` | Manages QR modal state: open/close, fetch QR code, store title/date for display |
+| `useGuideUpcomingTourSessions.ts` | Fetches all upcoming tour sessions across all templates via single API call (`getGuideUpcomingTourSessions`) |
+
+#### Configuration (`src/config/`)
+
+| File | Purpose |
+|---|---|
+| `location.ts` | Polling intervals, distance thresholds for location tracking |
+| `tour.ts` | `CHECKIN_WINDOW_MINUTES` (30) — how many minutes before tour start that check-in opens |
 
 #### Real-time Updates (Silent Polling Strategy)
 
@@ -125,10 +142,11 @@ To ensure the UI stays updated without jarring loading spinners, the app uses a 
 
 Three distinct timezones exist in the system: guide device, guest device, and tour template. The rules are:
 
-- **All tour times display in the tour template's timezone** — via `toLocaleString({ timeZone: tz })` on the frontend
+- **All tour times display in the tour template's timezone** — via `toLocaleString({ timeZone: tz })` on the frontend. The session creation screen shows a "Times shown in [timezone]" label so guides know which timezone they're setting.
 - **Status computation uses UTC math** — `getTourStatus()` compares UTC timestamps (timezone-agnostic), except the "today" check which compares dates in the tour's timezone
-- **Session creation sends naive ISO strings** — the frontend strips timezone offset; the backend interprets them in the tour template's timezone via `parse_local_datetime()`
-- **All datetimes stored in UTC** in the database
+- **Session creation sends UTC ISO strings** — the frontend sends `Date.toISOString()` (with Z suffix), preserving the exact absolute moment. The backend's `parse_local_datetime()` handles both UTC strings (converts directly) and naive strings (interprets in tour template timezone as a fallback).
+- **API responses always include timezone offset** — the backend serializes datetimes via Python's `.isoformat()` on UTC-aware objects, producing strings like `2026-03-11T15:30:00+00:00`. JavaScript's `new Date()` parses these correctly as UTC.
+- **All datetimes stored in UTC** in the database (PostgreSQL `DateTime(timezone=True)`)
 
 #### Navigation
 
@@ -136,11 +154,11 @@ Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
 
 | Role | Tab 1 | Tab 2 | Tab 3 |
 |---|---|---|---|
-| Guide | My Tours (dashboard) | Create Tour | Profile |
+| Guide | My Tours (dashboard) | Schedule (day planner) | Profile |
 | Guest | My Tours (dashboard) | Join Tour (QR/code) | Profile |
 
 Non-tab screens are hidden from the tab bar with `href: null`:
-- **Guide**: `tour_sessions`, `tour_session_details`, `create_tour_session`, `edit_tour_template`, `signin`
+- **Guide**: `tour_sessions`, `tour_session_details`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `signin`
 - **Guest**: `tour_booking_details`, `join_tour_session`, `signin`, `signup`
 
 #### Session Grouping (TabBar)
@@ -153,7 +171,7 @@ Both the guide's tour sessions and the guest's My Tours dashboard group sessions
 | **Upcoming** | Non-completed sessions after this week | Ascending (soonest first) |
 | **Past** | Completed sessions | Descending (most recent first) |
 
-The default tab is the first non-empty one (This Week → Upcoming → Past). Logic is shared via the `useSessionTabs` hook and `TabBar` component.
+The default tab is the first non-empty one (This Week → Upcoming → Past). Logic is shared via the `useTourSessionTabs` hook and `TabBar` component.
 
 #### Guide Dashboard Sorting
 
@@ -535,7 +553,7 @@ device_token
 | `/api/v1/auth` | Signup, signin, token refresh |
 | `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/sessions` |
 | `/api/v1/tour-sessions` | Tour session CRUD, QR generation, guest locations, message history |
-| `/api/v1/guides/<uid>` | Guide-specific views (upcoming, in-progress, completed) |
+| `/api/v1/guides` | Guide-specific views: `GET /guides/upcoming-sessions` (all upcoming sessions with template data, single JOIN query) |
 | `/api/v1/bookings` | Guest bookings (by code or QR scan) |
 | `/api/v1/checkins` | Guest check-in, update location sharing preference |
 | `/api/v1/location` | Guest location updates, stop sharing |
