@@ -253,6 +253,44 @@ If you get `startLocationUpdatesAsync has been rejected`:
    adb -s emulator-5556 shell settings put secure location_mode 3
    ```
 
+## Understanding the Architecture (Why the "Blank Screen" happens)
+
+React Native apps are two separate systems working together. Understanding this is key to troubleshooting:
+
+1.  **The Native Container (The Shell)**: The Android app installed on your phone. It contains the "muscles" (Camera, Location, Push Notifications). This only changes when you run `npx expo run:android`.
+2.  **The JavaScript Bundle (The Brain)**: Your code (`.tsx` files). This is served by **Metro**. It changes every time you save a file.
+
+**A Blank White Screen usually means the "Bridge" between the Shell and the Brain is broken.**
+
+### Mismatch Scenarios:
+- **Missing Muscles**: Your JS (Brain) tries to use the Camera, but your APK (Shell) was built before you added the camera library. Result: Red Error Screen.
+- **Stale Brain**: You updated your APK (Shell), but Metro is still serving an old, cached version of your JS from its memory. Result: Blank White Screen.
+- **Lost Connection**: The Shell is looking for the Brain at an old IP address. Result: "Problem loading project" or "Loading..." hanging forever.
+
+### The "Golden Rule" of Troubleshooting:
+- If you **change code** or **styles**: Refresh Metro (`r`) or Clear Metro Cache (`npx expo start -c`).
+- If you **install a library** (`npm install`): You MUST do a **Deep Rebuild** (`npx expo run:android`).
+
+## 8. The Foolproof Library Installation Workflow
+When you install a new package that contains native code (like `expo-image-picker`), use this sequence to ensure the Shell and Brain are perfectly synchronized.
+
+1. **Kill everything**: Stop Metro (`Ctrl+C`) and close the app on your emulators.
+2. **Install the package**: `npx expo install <package-name>`
+3. **Build the Shell (Exits when done)**: 
+   ```powershell
+   cd android; ./gradlew assembleDebug; cd ..
+   ```
+4. **Install the Shell**: Push the fresh APK to all running emulators:
+   ```powershell
+   adb -s emulator-5554 install -r android/app/build/outputs/apk/debug/app-debug.apk
+   adb -s emulator-5556 install -r android/app/build/outputs/apk/debug/app-debug.apk
+   ```
+5. **Start a Fresh Brain**: Force Metro to clear its cache:
+   ```powershell
+   npx expo start -c
+   ```
+6. **Open the App**: Tap the TripToe icon on the emulators.
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -271,4 +309,7 @@ If you get `startLocationUpdatesAsync has been rejected`:
 | `Port 8081 is being used` | Kill the old process: `npx kill-port 8081`, then restart Metro |
 | App icon not updating after change | Uninstall first (`adb uninstall com.triptoe.mobile`), then run `npx expo prebuild --clean` and `npx expo run:android` |
 | Changed `app.json` but nothing happened | `app.json` changes (icon, permissions, name) require `npx expo prebuild --clean` then `npx expo run:android` |
+| **"App react context shouldn't be created before"** crash | Stale native build cache. Run `cd android && ./gradlew clean`, then rebuild with `npx expo run:android` (or manually install APK with `adb`). |
+| **"There was a problem loading the project"** screen | Often caused by invalid deep links (URI schema) or stale JS bundle. Tap **"Go To Home"** or **"Reload"** on the emulator screen. If persistent, restart Metro with `npx expo start -c`. |
+
 

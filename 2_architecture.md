@@ -80,6 +80,9 @@ graph TB
 | `TimezonePicker` | Full-screen modal with searchable IANA timezone list |
 | `StatusBadge` | Tour status pill (upcoming, today, check-in open, in progress, completed) |
 | `TabBar` | Segmented pill-style tab bar (used for session grouping: This Week / Upcoming / Past) |
+| `StarRating` | Interactive or read-only star rating (1–5) using Ionicons |
+| `TourHeader` | Reusable tour info header (title, status badge, date/time) |
+| `CheckInBadge` | Check-in status indicator badge |
 
 #### Tour Components (`src/components/tour/`)
 
@@ -105,7 +108,7 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 
 | Utility | Purpose |
 |---|---|
-| `tourUtils.ts` | `getTourStatus()` — computes tour status; `getCheckinEligibility()` — determines check-in button state and message; `canDeleteSession()` — checks booking count and status |
+| `tourUtils.ts` | `getTourStatus()` — computes tour status; `getCheckinEligibility()` — determines check-in button state and message; `canDeleteSession()` — checks booking count and status; `getThisWeekBounds()` — single source of truth for "This Week" tab window (today + 6 days) |
 | `formatDate.ts` | `formatDate()`, `formatTime()`, `formatDateTime()`, `formatTimeRange()`, `formatDateGroupLabel()`, `formatDateWithYear()`, `formatTimeCompact()` — all display times in the tour template's timezone |
 | `recurrence.ts` | `generateRecurringSessions()` — generates batch session arrays from recurrence config (daily/weekly/weekday/custom); `wallClockToUTC()` / `pickerDateToUTCISO()` — timezone-safe conversion of picker values to UTC |
 | `apiError.ts` | `getApiError()` — extracts `error.response?.data?.error` with fallback |
@@ -159,7 +162,7 @@ Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
 | Guest | My Tours (dashboard) | Join Tour (QR/code) | Profile |
 
 Non-tab screens are hidden from the tab bar with `href: null`:
-- **Guide**: `tour_sessions`, `tour_session_details`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `signin`
+- **Guide**: `tour_sessions`, `tour_session_details`, `tour_session_messages`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `quick_messages`, `signin`
 - **Guest**: `tour_booking_details`, `join_tour_session`, `signin`, `signup`
 
 #### Session Grouping (TabBar)
@@ -168,11 +171,11 @@ Both the guide's tour sessions and the guest's My Tours dashboard group sessions
 
 | Tab | Contents | Sort |
 |---|---|---|
-| **This Week** | Non-completed sessions through Sunday | Ascending (soonest first) |
-| **Upcoming** | Non-completed sessions after this week | Ascending (soonest first) |
-| **Past** | Completed sessions | Descending (most recent first) |
+| **This Week** | Sessions starting today through the next 6 days (7-day window) | Ascending (soonest first) |
+| **Upcoming** | Sessions starting after this week | Ascending (soonest first) |
+| **Past** | Sessions starting before today | Descending (most recent first) |
 
-The default tab is the first non-empty one (This Week → Upcoming → Past). The guest dashboard uses client-side grouping via the `useTourSessionTabs` hook. The guide's tour sessions screen uses **server-side tab filtering with cursor pagination** (`GET /tours/<id>/sessions?tab=upcoming&limit=20&after=<cursor>`) and FlatList infinite scroll for large session lists.
+Bucketing is based on `start_datetime`, not tour status. A completed session that started today stays in "This Week" until the day ends. The default tab is the first non-empty one (This Week → Upcoming → Past). Both guide and guest use the same client-side grouping via the `useTourSessionTabs` hook, with `getThisWeekBounds()` from `tourUtils.ts` as the single source of truth for the 7-day window.
 
 #### Guide Dashboard Sorting
 
@@ -212,8 +215,8 @@ Tables are organized into five PostgreSQL schemas:
 |---|---|---|
 | `guide` | Guide and operator data | guide, operator, guide_operator_role |
 | `guest` | Guest accounts and location | guest, guest_location, verification_code |
-| `tour` | Tours, sessions, bookings | tour_template, tour_session, tour_booking, tour_checkin, archived_booking |
-| `message` | Messaging system | message, message_read_receipt, messaging_consent, message_template, blocked_communication |
+| `tour` | Tours, sessions, bookings | tour_template, tour_session, tour_booking, tour_checkin, tour_review, tour_session_photo, archived_booking |
+| `message` | Messaging system | message, message_read_receipt, messaging_consent, quick_message, blocked_communication |
 | `shared` | Cross-cutting concerns | device_token |
 
 ### Entity Relationship Diagram
@@ -236,8 +239,10 @@ erDiagram
     TourBooking ||--o{ TourCheckin : "linked to"
     GuestLocation }o--|| TourSession : "during"
     Message ||--o{ MessageReadReceipt : has
-    Guide ||--o{ MessageTemplate : creates
-    Operator ||--o{ MessageTemplate : has
+    Guide ||--o{ QuickMessage : creates
+    TourBooking ||--o| TourReview : has
+    TourSession ||--o{ TourReview : has
+    TourSession ||--o{ TourSessionPhoto : has
 
     Guide {
         string guide_uid PK
@@ -245,6 +250,7 @@ erDiagram
         string guide_name
         string phone_number
         string google_user_id
+        string tip_link
         bool is_active
     }
 
@@ -350,14 +356,29 @@ erDiagram
         datetime read_at
     }
 
-    MessageTemplate {
-        int template_id PK
+    QuickMessage {
+        int quick_message_id PK
         string guide_uid FK
-        int operator_id FK
-        string template_name
-        string template_category
-        string message_type
+        string quick_message_name
         text content
+        datetime created_at
+    }
+
+    TourReview {
+        int tour_review_id PK
+        int tour_booking_id FK UK
+        int tour_session_id FK
+        string guest_uid FK
+        int rating
+        text review_text
+        datetime created_at
+    }
+
+    TourSessionPhoto {
+        int tour_session_photo_id PK
+        int tour_session_id FK
+        string photo_url
+        datetime uploaded_at
     }
 ```
 
@@ -373,6 +394,8 @@ erDiagram
 - **Archived bookings** — When a tour session is deleted, bookings are moved to an `ArchivedBooking` table rather than being lost
 - **Batch session operations** — Sessions can be created in bulk via recurrence (daily/weekly/weekday/custom, up to 52 occurrences) and deleted in bulk (single, this and following, or all for a template). Batch delete skips sessions with bookings/check-ins and reports skipped IDs to the client.
 - **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins, and cannot be deleted when in progress or completed
+- **One review per booking** — `tour_booking_id` has a unique constraint on `tour_review`, enforced at the database level
+- **External tip payments** — Tips use an external URL (Venmo, PayPal, etc.) stored as `tip_link` on the guide profile; no in-app payment processing
 
 ## Authentication
 
@@ -553,13 +576,15 @@ device_token
 | Prefix | Purpose |
 |---|---|
 | `/api/v1/auth` | Signup, signin, token refresh |
-| `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/sessions` (paginated with `tab`, `limit`, `after` params) |
+| `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/sessions` (all sessions for a template), ratings aggregation |
 | `/api/v1/tour-sessions` | Tour session CRUD (single + batch create), `DELETE /tour-sessions/batch` (this_and_following / all), QR generation, guest locations, message history |
 | `/api/v1/guides` | Guide-specific views: `GET /guides/upcoming-sessions` (all upcoming sessions with template data, single JOIN query) |
 | `/api/v1/bookings` | Guest bookings (by code or QR scan) |
 | `/api/v1/checkins` | Guest check-in, update location sharing preference |
 | `/api/v1/location` | Guest location updates, stop sharing |
+| `/api/v1/reviews` | Guest review submission, guide review retrieval |
 | `/api/v1/messages` | Broadcast and direct messaging |
+| `/api/v1/messaging` | Quick message management (guide's reusable message presets) |
 | `/api/v1/operators` | Operator management |
 | `/api/v1/device-token` | Push notification token registration |
 
@@ -578,7 +603,7 @@ Railway Project: triptoe
 │   └── Auto-deploys from GitHub main branch
 ├── PostgreSQL: triptoe-db
 │   └── PostGIS extension enabled
-└── Volume: /uploads (QR codes, photos)
+└── Volume: /uploads (QR codes, tour session photos, profile photos)
 ```
 
 ### Backend Deployment Flow

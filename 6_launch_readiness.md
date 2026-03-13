@@ -17,7 +17,7 @@ Checklist of remaining work before production launch.
 - [ ] Add profile image upload to Railway volume
 
 ## Mobile
-- [ ] Test push notifications on a physical device
+- [ ] Test push notifications on a physical device (won't work on emulator — requires `eas build` + real device, then use Expo Push Tool or guide message to verify delivery)
 - [ ] Test Google Sign-In on a physical device
 - [ ] Set up EAS Build for production builds
 - [ ] App store listing (Google Play, Apple App Store)
@@ -35,7 +35,14 @@ Checklist of remaining work before production launch.
 - [ ] Guide: edit profile (name, languages, specialties)
 - [ ] Guest: edit profile (name, notification preferences)
 - [ ] Guest: receive push notification when tour session is about to start
-- [ ] Guide: send messages to booked guests
+- [x] Guide: send messages to booked guests
+- [x] Guide: quick messages (reusable message presets, create/edit/delete)
+- [x] Guide: upload group photos for completed sessions
+- [x] Guide: view guest ratings and reviews for completed sessions
+- [x] Guide: tip link on profile (external payment URL)
+- [x] Guest: submit star rating and optional review after tour ends
+- [x] Guest: view group photos uploaded by guide
+- [x] Guest: tip guide via external payment link
 - [x] Guest: view guide location during tour (if guide shares)
 - [ ] Offline support / graceful error handling for poor connectivity
 

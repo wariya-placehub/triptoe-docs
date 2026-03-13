@@ -17,7 +17,7 @@ Tour guides today face several challenges:
 - **Lost guests** — In crowded cities and attractions, guests wander off or fall behind. The guide has no way to know who is missing or where they are.
 - **Communication gaps** — Guides shout over traffic noise or use expensive radio equipment. Guests at the back of the group miss instructions.
 - **Manual check-ins** — Roll calls waste time. Paper sign-up sheets are error-prone. There's no reliable record of who attended.
-- **No post-tour engagement** — Once the tour ends, there's no channel to share recommendations, collect tips, or build a repeat customer relationship.
+- **No post-tour engagement** — Once the tour ends, there's no channel to collect reviews, share group photos, collect tips, or build a repeat customer relationship.
 
 ### The Solution
 
@@ -30,7 +30,7 @@ TripToe provides two connected experiences:
 - **Track guests in real-time** — See every guest's location on a live map during the tour session. Know immediately if someone falls behind or goes the wrong way.
 - **Send messages** — Push text messages to all guests or to individual guests within a session. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies.
 - **Audio broadcast** — Broadcast voice to all guests' phones during the tour session, replacing expensive radio equipment.
-- **Post-tour engagement** — Share restaurant recommendations, local tips, or social media links after the tour session ends.
+- **Post-tour engagement** — After the session ends, upload group photos for guests, view guest reviews and ratings, and collect tips via an external payment link (Venmo, PayPal, etc.).
 
 **For Tour Guests:**
 
@@ -39,7 +39,9 @@ TripToe provides two connected experiences:
 - **Location sharing** — Opt-in to share location during the tour session so the guide can keep track of the group. Location sharing stops automatically when the session ends.
 - **Receive messages** — Get real-time messages from the guide on your phone. Never miss an instruction.
 - **Listen to audio** — Hear the guide's broadcast directly on your phone, even in noisy environments.
-- **Pay tips** — Tip the guide directly through the app after the tour session.
+- **Rate and review** — Leave a star rating and optional review after the tour session ends.
+- **View group photos** — Access group photos uploaded by the guide after the session.
+- **Tip the guide** — Tap a tip button that opens the guide's external payment link (Venmo, PayPal, etc.).
 - **Discover nearby tours** — Find tour sessions starting soon near your current location.
 - **Get recommendations** — Access the guide's restaurant and activity recommendations for the area.
 
@@ -53,7 +55,7 @@ TripToe provides two connected experiences:
 4. On tour day, guide shares the session QR code with arriving guests
 5. Guide starts the tour and monitors guest locations on the live map
 6. Guide sends messages as needed during the session
-7. After the session, guide shares recommendations and receives tips
+7. After the session, guide uploads group photos and views guest reviews
 
 ```mermaid
 flowchart TD
@@ -67,8 +69,8 @@ flowchart TD
     H --> F
     G -->|No| I{Session ended?}
     I -->|No| F
-    I -->|Yes| J[Share Recommendations]
-    J --> K[Receive Tips]
+    I -->|Yes| J[Upload Group Photos]
+    J --> K[View Guest Reviews]
 ```
 
 ### Guest: Joining and experiencing a tour
@@ -78,7 +80,7 @@ flowchart TD
 3. Guest is checked into the **Tour Session**
 4. Guest enables location sharing when prompted
 5. Guest receives messages from the guide throughout the session
-6. After the session, guest can tip the guide and view recommendations
+6. After the session, guest can rate the tour, view group photos, and tip the guide
 
 ```mermaid
 flowchart TD
@@ -96,8 +98,9 @@ flowchart TD
     I -->|No| K{Session ended?}
     K -->|No| H
     K -->|Yes| L[Location Sharing Stops]
-    L --> M[Tip Guide]
-    M --> N[View Recommendations]
+    L --> M[Rate & Review Tour]
+    M --> N[View Group Photos]
+    N --> O[Tip Guide]
 ```
 
 ### Guide: Managing multiple check-ins
@@ -148,7 +151,7 @@ Template Created  →  Session Created  →  Guests Check In  →  Tour Active  
 
 - **Location tracking** is active only during the tour session window
 - **Messages** can be sent during the active tour
-- **Post-tour features** (tips, recommendations) are available after completion
+- **Post-tour features** (reviews, group photos, tips) are available after completion
 
 ### Platform
 
@@ -179,6 +182,9 @@ Implemented in the existing codebase and will carry over.
 - Multiple check-ins per tour session (start, after free time, etc.)
 - Real-time guest location tracking on interactive map
 - Broadcast and direct messaging to guests
+- Quick messages (reusable message presets)
+- Post-tour: upload group photos, view guest ratings and reviews
+- Tip link on profile (external payment URL)
 - Multi-operator support (guides working for multiple companies)
 
 **Guest Features:**
@@ -187,6 +193,7 @@ Implemented in the existing codebase and will carry over.
 - Location sharing with automatic stop when tour ends
 - Receive messages from guide
 - Booking management
+- Post-tour: star rating and review, view group photos, tip guide via external link
 
 ### Future Features
 
@@ -200,7 +207,6 @@ Not yet implemented — planned for later releases.
 
 **Guest Features:**
 - Nearby tour discovery (find tours starting soon within a given distance)
-- In-app tipping
 - Listen to guide's audio broadcast
 - Access post-tour recommendations
 - Push notifications (messages delivered when app is in background)
