@@ -91,6 +91,7 @@ graph TB
 | `TourSessionCard` | Unified session card used in tour-sessions and schedule screens. `titleMode` prop controls bold top line: `'date'` (under tour header) or `'tour'` (under date header). |
 | `QRModal` | Full-screen QR code modal for a tour session (reused across screens) |
 | `DateStrip` | Horizontal scrollable date pills for the schedule tab. Auto-scrolls to active date, highlights today. |
+| `GuidePicksList` | Grouped list of guide's local recommendations by category (eat, drink, see, shop, do). Shared between guide management and guest post-tour view. Accepts optional `onEdit`/`onDelete` props for guide editing mode. |
 
 #### Color Theme (TripToe Design System)
 
@@ -142,6 +143,17 @@ To ensure the UI stays updated without jarring loading spinners, the app uses a 
     - `tour_booking_details.tsx`: Updates session metadata and status.
 - **Auto-Termination**: Polling intervals are cleared automatically when the tour status transitions to `completed`.
 
+#### Post-Tour Tabs
+
+When a tour session is completed, both guide and guest detail screens switch to a tabbed layout:
+
+| Role | Tabs (in order) |
+|---|---|
+| **Guide** (Session Details) | Guests, Reviews, Photos, Messages |
+| **Guest** (Tour Details) | Review & Tip, Guide's Picks (conditional), Photos, Messages |
+
+The guest's "Guide's Picks" tab only appears if the guide has picks. Default tab for guests is "Review & Tip".
+
 #### Timezone Strategy
 
 Three distinct timezones exist in the system: guide device, guest device, and tour template. The rules are:
@@ -162,7 +174,7 @@ Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
 | Guest | My Tours (dashboard) | Join Tour (QR/code) | Profile |
 
 Non-tab screens are hidden from the tab bar with `href: null`:
-- **Guide**: `tour_sessions`, `tour_session_details`, `tour_session_messages`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `quick_messages`, `signin`
+- **Guide**: `tour_sessions`, `tour_session_details`, `tour_session_messages`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `quick_messages`, `guide_picks`, `signin`
 - **Guest**: `tour_booking_details`, `join_tour_session`, `signin`, `signup`
 
 #### Session Grouping (TabBar)
@@ -193,6 +205,7 @@ Tour templates on the guide's My Tours dashboard are sorted by nearest upcoming 
 | Push notifications | HTTP POST to Expo Push API |
 | File storage | Railway volume (local disk) |
 | CORS | Flask-CORS |
+| Scheduled jobs | APScheduler (BackgroundScheduler) |
 | WSGI server | Gunicorn |
 
 ### Infrastructure (Railway)
@@ -213,7 +226,7 @@ Tables are organized into five PostgreSQL schemas:
 
 | Schema | Purpose | Tables |
 |---|---|---|
-| `guide` | Guide and operator data | guide, operator, guide_operator_role |
+| `guide` | Guide and operator data | guide, guide_pick, guide_location, operator, guide_operator_role |
 | `guest` | Guest accounts and location | guest, guest_location, verification_code |
 | `tour` | Tours, sessions, bookings | tour_template, tour_session, tour_booking, tour_checkin, tour_review, tour_session_photo, archived_booking |
 | `message` | Messaging system | message, message_read_receipt, messaging_consent, quick_message, blocked_communication |
@@ -226,6 +239,7 @@ erDiagram
     Operator ||--o{ TourTemplate : owns
     Operator ||--o{ GuideOperatorRole : has
     Guide ||--o{ GuideOperatorRole : has
+    Guide ||--o{ GuidePick : curates
     Guide ||--o{ TourSession : leads
     TourTemplate ||--o{ TourSession : "has"
     TourSession ||--o{ TourBooking : has
@@ -356,6 +370,17 @@ erDiagram
         datetime read_at
     }
 
+    GuidePick {
+        int guide_pick_id PK
+        string guide_uid FK
+        string place_name
+        string category
+        text note
+        string map_link
+        int display_order
+        datetime created_at
+    }
+
     QuickMessage {
         int quick_message_id PK
         string guide_uid FK
@@ -393,7 +418,7 @@ erDiagram
 - **Soft deletes for messages** — Messages use `is_deleted` flag rather than hard deletes
 - **Archived bookings** — When a tour session is deleted, bookings are moved to an `ArchivedBooking` table rather than being lost
 - **Batch session operations** — Sessions can be created in bulk via recurrence (daily/weekly/weekday/custom, up to 52 occurrences) and deleted in bulk (single, this and following, or all for a template). Batch delete skips sessions with bookings/check-ins and reports skipped IDs to the client.
-- **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins, and cannot be deleted when in progress or completed
+- **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins, and cannot be deleted when in progress or completed. Session deletion must clean up all FK-dependent records: `TourCheckin`, `GuestLocation`, `GuideLocation`, `TourReview`, `TourSessionPhoto`, `TourBooking` (manual cleanup), plus `Message`, `MessagingConsent` (CASCADE), and `MessageAnalytics` (SET NULL)
 - **One review per booking** — `tour_booking_id` has a unique constraint on `tour_review`, enforced at the database level
 - **External tip payments** — Tips use an external URL (Venmo, PayPal, etc.) stored as `tip_link` on the guide profile; no in-app payment processing
 
@@ -585,6 +610,7 @@ device_token
 | `/api/v1/reviews` | Guest review submission, guide review retrieval |
 | `/api/v1/messages` | Broadcast and direct messaging |
 | `/api/v1/messaging` | Quick message management (guide's reusable message presets) |
+| `/api/v1/guide-picks` | Guide's Picks CRUD, reorder, and public retrieval by guide UID |
 | `/api/v1/operators` | Operator management |
 | `/api/v1/device-token` | Push notification token registration |
 

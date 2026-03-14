@@ -31,6 +31,7 @@ TripToe provides two connected experiences:
 - **Send messages** — Push text messages to all guests or to individual guests within a session. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies.
 - **Audio broadcast** — Broadcast voice to all guests' phones during the tour session, replacing expensive radio equipment.
 - **Post-tour engagement** — After the session ends, upload group photos for guests, view guest reviews and ratings, and collect tips via an external payment link (Venmo, PayPal, etc.).
+- **Guide's Picks** — Curate a persistent list of local recommendations (restaurants, bars, sights, shops, activities) that guests automatically see after a completed tour. Each pick has a name, category, optional personal note, and optional map link.
 
 **For Tour Guests:**
 
@@ -42,8 +43,8 @@ TripToe provides two connected experiences:
 - **Rate and review** — Leave a star rating and optional review after the tour session ends.
 - **View group photos** — Access group photos uploaded by the guide after the session.
 - **Tip the guide** — Tap a tip button that opens the guide's external payment link (Venmo, PayPal, etc.).
+- **Guide's Picks** — After a completed tour, browse the guide's curated local recommendations grouped by category (eat, drink, see, shop, do) with optional map links.
 - **Discover nearby tours** — Find tour sessions starting soon near your current location.
-- **Get recommendations** — Access the guide's restaurant and activity recommendations for the area.
 
 ## Key User Journeys
 
@@ -56,6 +57,7 @@ TripToe provides two connected experiences:
 5. Guide starts the tour and monitors guest locations on the live map
 6. Guide sends messages as needed during the session
 7. After the session, guide uploads group photos and views guest reviews
+8. Guide curates local recommendations (Guide's Picks) that guests see post-tour
 
 ```mermaid
 flowchart TD
@@ -80,7 +82,7 @@ flowchart TD
 3. Guest is checked into the **Tour Session**
 4. Guest enables location sharing when prompted
 5. Guest receives messages from the guide throughout the session
-6. After the session, guest can rate the tour, view group photos, and tip the guide
+6. After the session, guest can rate the tour, view group photos, tip the guide, and browse the guide's local recommendations
 
 ```mermaid
 flowchart TD
@@ -99,8 +101,9 @@ flowchart TD
     K -->|No| H
     K -->|Yes| L[Location Sharing Stops]
     L --> M[Rate & Review Tour]
-    M --> N[View Group Photos]
-    N --> O[Tip Guide]
+    M --> N[Browse Guide's Picks]
+    N --> O[View Group Photos]
+    O --> P[Tip Guide]
 ```
 
 ### Guide: Managing multiple check-ins
@@ -183,7 +186,9 @@ Implemented in the existing codebase and will carry over.
 - Real-time guest location tracking on interactive map
 - Broadcast and direct messaging to guests
 - Quick messages (reusable message presets)
+- Guide's Picks: curate local recommendations (eat, drink, see, shop, do) with optional notes and map links
 - Post-tour: upload group photos, view guest ratings and reviews
+- Post-tour push notification (30 min after tour ends) nudging guests to view guide's picks
 - Tip link on profile (external payment URL)
 - Multi-operator support (guides working for multiple companies)
 
@@ -193,7 +198,7 @@ Implemented in the existing codebase and will carry over.
 - Location sharing with automatic stop when tour ends
 - Receive messages from guide
 - Booking management
-- Post-tour: star rating and review, view group photos, tip guide via external link
+- Post-tour: star rating and review, view group photos, tip guide via external link, browse guide's local recommendations
 
 ### Future Features
 
@@ -202,13 +207,11 @@ Not yet implemented — planned for later releases.
 **Guide Features:**
 - Audio broadcasting to guest phones
 - Tour analytics and reporting
-- Post-tour restaurant and activity recommendations
 - Social media sharing
 
 **Guest Features:**
 - Nearby tour discovery (find tours starting soon within a given distance)
 - Listen to guide's audio broadcast
-- Access post-tour recommendations
 - Push notifications (messages delivered when app is in background)
 
 **Platform:**

@@ -40,6 +40,9 @@ Checklist of remaining work before production launch.
 - [x] Guide: upload group photos for completed sessions
 - [x] Guide: view guest ratings and reviews for completed sessions
 - [x] Guide: tip link on profile (external payment URL)
+- [x] Guide: Guide's Picks — curate local recommendations (eat, drink, see, shop, do) for guests
+- [x] Guide/Guest: post-tour tabbed layout (Review & Tip, Guide's Picks, Photos, Messages)
+- [x] Post-tour push notification nudging guests to view guide's picks (APScheduler, 30 min after tour)
 - [x] Guest: submit star rating and optional review after tour ends
 - [x] Guest: view group photos uploaded by guide
 - [x] Guest: tip guide via external payment link
