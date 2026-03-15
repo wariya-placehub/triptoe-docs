@@ -78,11 +78,12 @@ graph TB
 | `LoadingScreen` | Full-screen loading spinner |
 | `EmptyState` | Placeholder for empty lists |
 | `TimezonePicker` | Full-screen modal with searchable IANA timezone list |
-| `StatusBadge` | Tour session status pill with per-status colors: Upcoming (ocean blue), Today (tour blue), Check-in Now (amber), In Progress (green), Completed (teal). Outline pill style using inline styles for reliable `borderRadius`. |
+| `StatusBadge` | Generic pill badge with `label`, `color`, and `variant` (outline or filled) props. No domain knowledge — used as base for `TourSessionStatusBadge` and `CheckInBadge`. |
 | `TabBar` | Segmented pill-style tab bar (used for session grouping: This Week / Upcoming / Past) |
 | `StarRating` | Interactive or read-only star rating (1–5) using Ionicons |
 | `PhotoModal` | Full-screen photo viewer with close button overlay |
-| `CheckInBadge` | Check-in status indicator badge |
+| `CheckInBadge` | Filled green "Checked In" badge. Wraps `StatusBadge` with `variant="filled"`. |
+| `InfoLine` | Icon + text line for metadata display. `type` prop: `location` (pin icon), `time` (clock icon), `tag` (tag icon). Supports optional `children` (e.g., "Map" link). |
 
 #### Tour Components (`src/components/tour/`)
 
@@ -90,7 +91,8 @@ Shared domain components used by both guide and guest screens.
 
 | Component | Purpose |
 |---|---|
-| `TourSessionHeader` | Reusable header used on Tour Sessions (guide), Session Details (guide), and Tour Details (guest). Props: `title`, `timeInfo` (duration or datetime), `meetingPlace` (with location icon and optional "Map" link when `meetingCoordinates` provided), `detail` (e.g. tour code with tag icon), `description` (3-line truncated), `status` (StatusBadge), `coverImageUrl` (120×120 thumbnail), `action` (e.g. Edit Session button), `onTitlePress` (makes title and thumbnail tappable). Handles map navigation internally via `Linking` API. |
+| `TourSessionHeader` | Reusable header used on Tour Sessions (guide), Session Details (guide), and Tour Details (guest). Props: `title`, `timeInfo` (duration or datetime), `meetingPlace` (with `InfoLine` location icon and optional "Map" link when `meetingCoordinates` provided), `detail` (e.g. tour code with `InfoLine` tag icon), `description` (3-line truncated), `status` (`TourSessionStatusBadge`), `coverImageUrl` (120×120 thumbnail), `action` (e.g. Edit Session button), `onTitlePress` (makes title and thumbnail tappable). Handles map navigation internally via `Linking` API. |
+| `TourSessionStatusBadge` | Maps `TourSessionStatus` to label + color, renders outline `StatusBadge`. Colors: Upcoming (ocean blue), Today (tour blue), Check-in Now (amber), In Progress (green), Completed (teal). |
 | `TourTemplateForm` | Shared form for Create Tour and Edit Tour screens. Manages image state internally (cover image + meeting place photo) and reports changes via `ImageChanges` in `onSubmit`. Includes map picker, meeting place details, and optional `onDelete` prop. |
 | `MapPickerModal` | Full-screen map modal for setting meeting point. Features: pin drop, drag to adjust, reverse geocoding to suggest address, forward geocoding from `initialQuery` (meeting place text). Uses `DEV_FALLBACK_REGION` from constants as last resort. |
 | `QRModal` | Full-screen QR code modal for a tour session (reused across screens) |
@@ -118,7 +120,7 @@ Guest-specific components, not used by guide screens.
 
 | Component | Purpose |
 |---|---|
-| `GuestBookingCard` | Booking card on guest My Tours dashboard. Shows tour info, status, cover image. Day-of nudge: when tour starts within 60 minutes, shows meeting place photo and "To Meeting Point" navigation button. Accepts `now` prop for local timer-based re-evaluation. |
+| `GuestTourBookingCard` | Booking card on guest My Tours dashboard. Shows tour info with `InfoLine` icons, `TourSessionStatusBadge`, `CheckInBadge`, cover image. Day-of nudge: when tour starts within 60 minutes, shows meeting place photo and "To Meeting Point" navigation button. Accepts `now` prop for local timer-based re-evaluation. |
 
 #### Color Theme (TripToe Design System)
 
@@ -138,12 +140,13 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 
 | Utility | Purpose |
 |---|---|
-| `tourUtils.ts` | `getTourStatus()` — computes tour status; `getCheckinEligibility()` — determines check-in button state and message; `canDeleteSession()` — checks booking count and status; `getThisWeekBounds()` — single source of truth for "This Week" tab window (today + 6 days) |
+| `tourUtils.ts` | `TourSessionStatus` type; `getTourSessionStatus()` — computes session status; `getCheckinEligibility()` — determines check-in button state and message; `canDeleteSession()` — checks booking count and status; `getThisWeekBounds()` — single source of truth for "This Week" tab window (today + 6 days) |
 | `formatDate.ts` | `formatDate()`, `formatTime()`, `formatDateTime()`, `formatTimeRange()`, `formatDateGroupLabel()`, `formatDateWithYear()`, `formatTimeCompact()` — all display times in the tour template's timezone |
 | `recurrence.ts` | `generateRecurringSessions()` — generates batch session arrays from recurrence config (daily/weekly/weekday/custom); `wallClockToUTC()` / `pickerDateToUTCISO()` — timezone-safe conversion of picker values to UTC |
 | `apiError.ts` | `getApiError()` — extracts `error.response?.data?.error` with fallback |
 | `confirmAction.ts` | `confirmAction()` — reusable destructive action confirmation (Alert + async try/catch) |
 | `imageUrl.ts` | `getImageUrl()` — converts relative upload paths (e.g. `/uploads/tour_covers/abc.jpg`) to full URLs using `API_BASE_URL` from constants; passes through absolute URLs unchanged |
+| `imagePicker.ts` | `showImagePickerAlert(title, onPick, options)` — shows Camera/Photo Library alert; `pickImageFromLibrary()` / `pickImageFromCamera()` — individual pickers. All image pickers should pass `allowsEditing` and `aspect` matching the backend crop ratio (1:1 for cover/profile, 4:3 for meeting place) |
 | `navigationParams.ts` | DRY helpers for building navigation param objects: `buildEditTourTemplateParams()`, `buildTourSessionDetailsParams()`, `buildEditSessionParams()`, `serializeCoordinates()` / `deserializeCoordinates()`, `formatSessionDateTime()` |
 
 #### Shared Hooks (`src/hooks/`)
@@ -154,7 +157,8 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 | `useTourSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) |
 | `useTourStatus.ts` | Calculates and periodically updates the tour status (heartbeat) |
 | `useQRModal.ts` | Manages QR modal state: open/close, fetch QR code, store title/date for display |
-| `useGuideUpcomingTourSessions.ts` | Fetches all upcoming tour sessions across all templates via single API call (`getGuideUpcomingTourSessions`) |
+| `useGuideTourSessions.ts` | Fetches tour sessions (upcoming + optionally past) across all templates via single API call. Used by Schedule screen. |
+| `useTourSessionStatus.ts` | Calculates and periodically updates the tour session status (heartbeat) |
 
 #### Configuration
 
@@ -198,7 +202,7 @@ The guest's "Guide's Picks" tab only appears if the guide has picks. Default tab
 Three distinct timezones exist in the system: guide device, guest device, and tour template. The rules are:
 
 - **All tour times display in the tour template's timezone** — via `toLocaleString({ timeZone: tz })` on the frontend. The session creation screen shows a "Times shown in [timezone]" label so guides know which timezone they're setting.
-- **Status computation uses UTC math** — `getTourStatus()` compares UTC timestamps (timezone-agnostic), except the "today" check which compares dates in the tour's timezone
+- **Status computation uses UTC math** — `getTourSessionStatus()` compares UTC timestamps (timezone-agnostic), except the "today" check which compares dates in the tour's timezone
 - **Session creation uses wall-clock projection** — the date/time pickers return numbers in the phone's local timezone. The frontend extracts those wall-clock values (hour, minute, day) and projects them into the tour template's timezone using `wallClockToUTC()` before sending UTC ISO strings to the backend. This ensures a guide in New York scheduling a tour for 9:00 AM London time sends the correct UTC instant, not 9:00 AM New York time. Recurring session generation uses the same projection per-date to avoid DST drift.
 - **API responses always include timezone offset** — the backend serializes datetimes via Python's `.isoformat()` on UTC-aware objects, producing strings like `2026-03-11T15:30:00+00:00`. JavaScript's `new Date()` parses these correctly as UTC.
 - **All datetimes stored in UTC** in the database (PostgreSQL `DateTime(timezone=True)`)

@@ -50,13 +50,19 @@ Rules:
 ```
 src/services/tours.ts        # All tour template, session, and booking API calls
 src/services/location.ts     # Location tracking API calls
-src/utils/tourStatus.ts      # Tour status logic (getTourStatus, getCheckinEligibility)
+src/utils/tourUtils.ts       # TourSessionStatus type, getTourSessionStatus(), getCheckinEligibility()
 src/utils/formatDate.ts      # Date/time formatting helpers
+src/utils/navigationParams.ts # DRY builders for navigation params, coordinate serialization
+src/utils/imagePicker.ts     # Shared image picker (camera + library) utilities
 src/hooks/usePollingInterval.ts
 src/hooks/useTourSessionTabs.ts
 src/hooks/useQRModal.ts          # QR modal state management
-src/hooks/useGuideUpcomingTourSessions.ts  # Fetch all upcoming tour sessions (single API call)
-src/components/tour/TourSessionCard.tsx  # Reusable session card (titleMode: 'date' | 'tour')
+src/hooks/useGuideTourSessions.ts  # Fetch tour sessions across all templates (single API call)
+src/components/tour/TourSessionHeader.tsx  # Shared header (guide + guest)
+src/components/tour/TourSessionStatusBadge.tsx  # Tour session status pill (wraps StatusBadge)
+src/components/guide/GuideTourSessionCard.tsx  # Session card (Tour Sessions + Schedule)
+src/components/guide/GuideTourTemplateCard.tsx  # Template card (My Tours)
+src/components/guest/GuestTourBookingCard.tsx   # Booking card (guest My Tours)
 src/components/tour/QRModal.tsx      # QR code modal
 src/components/tour/DateStrip.tsx    # Horizontal date pills for schedule
 src/config/location.ts       # Polling intervals, distance thresholds
@@ -209,7 +215,7 @@ The tab title in `_layout.tsx` controls what the customer sees. The file name co
 /tour-sessions/<tour_session_id>/locations
 /guides/upcoming-sessions        # All upcoming sessions (JOIN query)
 /bookings/qr-scan
-/bookings/<booking_id>
+/bookings/<tour_booking_id>
 /checkins
 /location/update
 /location/guide/update
@@ -218,6 +224,6 @@ The tab title in `_layout.tsx` controls what the customer sees. The file name co
 
 ### Database tables
 
-Tables use **snake_case** singular: `tour_template`, `tour_session`, `booking`, `checkin`.
+Tables use **snake_case** singular: `tour_template`, `tour_session`, `tour_booking`, `tour_checkin`.
 
-Primary key columns include the table name: `tour_template_id`, `tour_session_id`, `booking_id`.
+Primary key columns include the table name: `tour_template_id`, `tour_session_id`, `tour_booking_id`, `tour_checkin_id`.
