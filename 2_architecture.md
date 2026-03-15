@@ -81,18 +81,44 @@ graph TB
 | `StatusBadge` | Tour session status pill with per-status colors: Upcoming (ocean blue), Today (tour blue), Check-in Now (amber), In Progress (green), Completed (teal). Outline pill style using inline styles for reliable `borderRadius`. |
 | `TabBar` | Segmented pill-style tab bar (used for session grouping: This Week / Upcoming / Past) |
 | `StarRating` | Interactive or read-only star rating (1–5) using Ionicons |
-| `TourSessionHeader` | Reusable header used on Tour Sessions (guide), Session Details (guide), and Tour Details (guest). Props: `title`, `timeInfo` (duration or datetime), `meetingPlace` (with location icon), `detail` (e.g. tour code with tag icon), `description` (3-line truncated), `status` (StatusBadge), `coverImageUrl` (120×120 thumbnail), `action` (e.g. Edit Session button), `onTitlePress` (makes title and thumbnail tappable). |
+| `PhotoModal` | Full-screen photo viewer with close button overlay |
 | `CheckInBadge` | Check-in status indicator badge |
 
 #### Tour Components (`src/components/tour/`)
 
+Shared domain components used by both guide and guest screens.
+
 | Component | Purpose |
 |---|---|
-| `TourSessionCard` | Unified session card used in tour-sessions and schedule screens. `titleMode` prop controls bold top line: `'date'` (under tour header) or `'tour'` (under date header). Optional `onEditPress` shows an "Edit" link next to the time range. |
-| `TourTemplateForm` | Shared form for Create Tour and Edit Tour screens. Handles cover image pick/remove (square 160×160 preview), tour fields, and optional `onDelete` prop for the edit screen. |
+| `TourSessionHeader` | Reusable header used on Tour Sessions (guide), Session Details (guide), and Tour Details (guest). Props: `title`, `timeInfo` (duration or datetime), `meetingPlace` (with location icon and optional "Map" link when `meetingCoordinates` provided), `detail` (e.g. tour code with tag icon), `description` (3-line truncated), `status` (StatusBadge), `coverImageUrl` (120×120 thumbnail), `action` (e.g. Edit Session button), `onTitlePress` (makes title and thumbnail tappable). Handles map navigation internally via `Linking` API. |
+| `TourTemplateForm` | Shared form for Create Tour and Edit Tour screens. Manages image state internally (cover image + meeting place photo) and reports changes via `ImageChanges` in `onSubmit`. Includes map picker, meeting place details, and optional `onDelete` prop. |
+| `MapPickerModal` | Full-screen map modal for setting meeting point. Features: pin drop, drag to adjust, reverse geocoding to suggest address, forward geocoding from `initialQuery` (meeting place text). Uses `DEV_FALLBACK_REGION` from constants as last resort. |
 | `QRModal` | Full-screen QR code modal for a tour session (reused across screens) |
 | `DateStrip` | Horizontal scrollable date pills for the schedule tab. Auto-scrolls to active date, highlights today. |
 | `GuidePicksList` | Grouped list of guide's local recommendations by category (eat, drink, see, shop, do). Shared between guide management and guest post-tour view. Accepts optional `onEdit`/`onDelete` props for guide editing mode. |
+| `GuideProfileModal` | Bottom-sheet modal showing guide bio, languages, specialties. Used on guest Tour Details screen. |
+
+#### Guide Components (`src/components/guide/`)
+
+Guide-specific components, not used by guest screens.
+
+| Component | Purpose |
+|---|---|
+| `GuideTourTemplateCard` | Tour template card on My Tours dashboard. Shows title, duration, meeting place, next session date, cover image thumbnail, and edit link. |
+| `GuideTourSessionCard` | Session card used on Tour Sessions and Schedule screens. `titleMode` prop controls bold top line: `'date'` or `'tour'`. Shows time range with "Edit" link, status badge, booking/check-in counts, QR button. |
+| `GuidePickModal` | Bottom-sheet modal for adding/editing a Guide's Pick (place name, category, note, map link). |
+| `GuestsTab` | Guest list tab for Session Details (completed tour) |
+| `MessagesTab` | Messages tab for Session Details (completed tour) |
+| `PhotosTab` | Photos tab for Session Details (completed tour) |
+| `ReviewsTab` | Reviews tab for Session Details (completed tour) |
+
+#### Guest Components (`src/components/guest/`)
+
+Guest-specific components, not used by guide screens.
+
+| Component | Purpose |
+|---|---|
+| `GuestBookingCard` | Booking card on guest My Tours dashboard. Shows tour info, status, cover image. Day-of nudge: when tour starts within 60 minutes, shows meeting place photo and "To Meeting Point" navigation button. Accepts `now` prop for local timer-based re-evaluation. |
 
 #### Color Theme (TripToe Design System)
 
@@ -117,24 +143,26 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 | `recurrence.ts` | `generateRecurringSessions()` — generates batch session arrays from recurrence config (daily/weekly/weekday/custom); `wallClockToUTC()` / `pickerDateToUTCISO()` — timezone-safe conversion of picker values to UTC |
 | `apiError.ts` | `getApiError()` — extracts `error.response?.data?.error` with fallback |
 | `confirmAction.ts` | `confirmAction()` — reusable destructive action confirmation (Alert + async try/catch) |
-| `imageUrl.ts` | `getImageUrl()` — converts relative upload paths (e.g. `/uploads/tour_covers/abc.jpg`) to full URLs for React Native Image; passes through absolute URLs (e.g. Google profile photos) unchanged |
+| `imageUrl.ts` | `getImageUrl()` — converts relative upload paths (e.g. `/uploads/tour_covers/abc.jpg`) to full URLs using `API_BASE_URL` from constants; passes through absolute URLs unchanged |
+| `navigationParams.ts` | DRY helpers for building navigation param objects: `buildEditTourTemplateParams()`, `buildTourSessionDetailsParams()`, `buildEditSessionParams()`, `serializeCoordinates()` / `deserializeCoordinates()`, `formatSessionDateTime()` |
 
 #### Shared Hooks (`src/hooks/`)
 
 | Hook | Purpose |
 |---|---|
-| `useHeaderBackButton.ts` | Adds a back arrow to the header that navigates via `router.replace()` (for hidden tab screens) |
+| `useHeaderBackButton.ts` | Adds a back arrow to the header. Uses `router.replace()` by default (for hidden tab screens) or `router.navigate()` via `method` param (for tab screens like Schedule, to trigger `useFocusEffect`) |
 | `useTourSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) |
 | `useTourStatus.ts` | Calculates and periodically updates the tour status (heartbeat) |
 | `useQRModal.ts` | Manages QR modal state: open/close, fetch QR code, store title/date for display |
 | `useGuideUpcomingTourSessions.ts` | Fetches all upcoming tour sessions across all templates via single API call (`getGuideUpcomingTourSessions`) |
 
-#### Configuration (`src/config/`)
+#### Configuration
 
-| File | Purpose |
-|---|---|
-| `location.ts` | Polling intervals, distance thresholds for location tracking |
-| `tour.ts` | `CHECKIN_WINDOW_MINUTES` (30) — how many minutes before tour start that check-in opens |
+App-wide constants are centralized in `src/constants.ts`:
+- `API_URL` / `API_BASE_URL` — single source of truth for backend URL (from `EXPO_PUBLIC_API_URL` env var, logs error if missing in non-dev builds)
+- `DEV_FALLBACK_REGION` — default map region when device location and geocoding both fail (broad view, not production default)
+- Polling intervals, distance thresholds, check-in window
+- Theme colors for JS props (mirrors `tailwind.config.js` tokens)
 
 #### Real-time Updates (Silent Polling Strategy)
 
@@ -146,6 +174,13 @@ To ensure the UI stays updated without jarring loading spinners, the app uses a 
     - `tour_session_details.tsx`: Updates guest list and check-in counts.
     - `tour_booking_details.tsx`: Updates session metadata and status.
 - **Auto-Termination**: Polling intervals are cleared automatically when the tour status transitions to `completed`.
+
+#### Guest Dashboard Refresh Strategy
+
+The guest dashboard uses a three-layer refresh approach:
+- **On focus**: Fetches fresh booking data from the API when the screen gains focus (`useFocusEffect`)
+- **Local timer**: A 60-second `setInterval` updates `Date.now()` to re-evaluate which tours are "starting soon" (within 60 minutes) — triggers the day-of nudge (meeting place photo + "To Meeting Point" button) with zero network cost
+- **Pull-to-refresh**: Manual swipe-down to fetch fresh data from the API
 
 #### Post-Tour Tabs
 
@@ -187,10 +222,10 @@ Edit screens use a `back_to` param to return to the originating screen:
 
 | Screen | Accessible from | Back/Save goes to |
 |---|---|---|
-| Edit Tour Template | My Tours (pencil icon), Tour Sessions (tap title/thumbnail) | My Tours or Tour Sessions (based on `back_to` param) |
-| Edit Session | Tour Sessions (Edit link on card), Session Details (Edit Session button) | Tour Sessions or Session Details (based on `back_to` param) |
+| Edit Tour Template | My Tours (edit icon + text), Tour Sessions (tap title/thumbnail) | My Tours or Tour Sessions (based on `back_to` param) |
+| Edit Session | Tour Sessions (Edit link on card), Schedule (Edit link on card), Session Details (Edit Session button) | Tour Sessions, Schedule, or Session Details (based on `back_to` param) |
 
-Delete Tour always returns to My Tours (since the tour no longer exists).
+Delete Tour always returns to My Tours (since the tour no longer exists). Schedule uses `router.navigate()` instead of `router.replace()` to trigger data reload via `useFocusEffect`.
 
 #### Session Grouping (TabBar)
 
@@ -229,7 +264,7 @@ Tour templates on the guide's My Tours dashboard are sorted by nearest upcoming 
 |---|---|
 | Web service | Flask API (deployed from Dockerfile) |
 | PostgreSQL | Database with PostGIS extension |
-| Volume | File storage (generated QR codes, profile photos, tour cover images, tour session photos) |
+| Volume | File storage (generated QR codes, profile photos, tour cover images, meeting place photos, tour session photos) |
 
 ## Data Model
 
@@ -436,7 +471,9 @@ erDiagram
 - **Batch session operations** — Sessions can be created in bulk via recurrence (daily/weekly/weekday/custom, up to 52 occurrences) and deleted in bulk (single, this and following, or all for a template). Batch delete skips sessions with bookings/check-ins and reports skipped IDs to the client.
 - **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins, and cannot be deleted when in progress or completed. Session deletion must clean up all FK-dependent records: `TourCheckin`, `GuestLocation`, `GuideLocation`, `TourReview`, `TourSessionPhoto`, `TourBooking` (manual cleanup), plus `Message`, `MessagingConsent` (CASCADE), and `MessageAnalytics` (SET NULL)
 - **One review per booking** — `tour_booking_id` has a unique constraint on `tour_review`, enforced at the database level
-- **Cover image processing** — Uploaded cover images are server-side center-cropped to 1:1 aspect ratio, resized to 400×400, converted to JPEG (quality 85) using Pillow. This ensures consistent thumbnails and small file sizes regardless of the source image format or dimensions
+- **Image processing** — All uploaded images are server-side center-cropped and resized via a shared `_save_tour_image()` helper using Pillow. Cover images: 1:1 (400×400). Meeting place photos: 4:3 (800×600). Both converted to JPEG quality 85. The helper handles validation, old file cleanup, and directory creation.
+- **Model serialization** — `GuidePick.to_dict()` and `TourSessionPhoto.to_dict()` ensure consistent JSON output across all endpoints. `_build_guide_details()` helper in `tour_sessions.py` constructs guide response dicts (with conditional picks for completed sessions).
+- **Coordinate parsing** — `parse_coordinates()` in `app/utils/route_helpers.py` converts PostgreSQL POINT format to `{lat, lng}` dicts, shared across `tour_templates.py` and `tour_sessions.py`.
 - **External tip payments** — Tips use an external URL (Venmo, PayPal, etc.) stored as `tip_link` on the guide profile; no in-app payment processing
 
 ## Authentication

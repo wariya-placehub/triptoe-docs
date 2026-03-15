@@ -217,3 +217,14 @@ Not yet implemented — planned for later releases.
 **Platform:**
 - Multi-language support
 - Offline mode for areas with poor connectivity
+
+**Misc:**
+- Add picture and details to meeting place
+- Add a tab for happening now tour
+- Permission request during installation
+- Guest profile page (rename profile to account)
+- Message before the tour starts
+- Guest check out
+- Route for places to stop 
+- Test (camera to take profile picture, tour picture, push notification)
+- Guide tour template deletion
