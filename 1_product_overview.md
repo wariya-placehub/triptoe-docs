@@ -25,7 +25,7 @@ TripToe provides two connected experiences:
 
 **For Tour Guides:**
 
-- **Create Tour Templates** — Define reusable tours with a title, description, duration, and meeting point (with map coordinates).
+- **Create Tour Templates** — Define reusable tours with a title, description, duration, meeting point (with map coordinates), and cover image (auto-cropped to square thumbnail).
 - **Create Tour Sessions** — Pick dates and times for specific occurrences of a template. Each session gets a unique QR code for guest check-in.
 - **Track guests in real-time** — See every guest's location on a live map during the tour session. Know immediately if someone falls behind or goes the wrong way.
 - **Send messages** — Push text messages to all guests or to individual guests within a session. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies.
@@ -178,7 +178,7 @@ Implemented in the existing codebase and will carry over.
 
 **Guide Features:**
 - Account creation and authentication (Google OAuth)
-- Tour template creation and management
+- Tour template creation and management (with cover image upload, server-side crop to square thumbnail)
 - Tour session creation with specific dates and times, including recurring sessions (daily, weekly, weekday, custom) with batch creation
 - Bulk session deletion (this session, this and following, all sessions)
 - QR code generation for guest check-in

@@ -78,17 +78,18 @@ graph TB
 | `LoadingScreen` | Full-screen loading spinner |
 | `EmptyState` | Placeholder for empty lists |
 | `TimezonePicker` | Full-screen modal with searchable IANA timezone list |
-| `StatusBadge` | Tour status pill (upcoming, today, check-in open, in progress, completed) |
+| `StatusBadge` | Tour session status pill with per-status colors: Upcoming (ocean blue), Today (tour blue), Check-in Now (amber), In Progress (green), Completed (teal). Outline pill style using inline styles for reliable `borderRadius`. |
 | `TabBar` | Segmented pill-style tab bar (used for session grouping: This Week / Upcoming / Past) |
 | `StarRating` | Interactive or read-only star rating (1–5) using Ionicons |
-| `TourHeader` | Reusable tour info header (title, status badge, date/time) |
+| `TourSessionHeader` | Reusable header used on Tour Sessions (guide), Session Details (guide), and Tour Details (guest). Props: `title`, `timeInfo` (duration or datetime), `meetingPlace` (with location icon), `detail` (e.g. tour code with tag icon), `description` (3-line truncated), `status` (StatusBadge), `coverImageUrl` (120×120 thumbnail), `action` (e.g. Edit Session button), `onTitlePress` (makes title and thumbnail tappable). |
 | `CheckInBadge` | Check-in status indicator badge |
 
 #### Tour Components (`src/components/tour/`)
 
 | Component | Purpose |
 |---|---|
-| `TourSessionCard` | Unified session card used in tour-sessions and schedule screens. `titleMode` prop controls bold top line: `'date'` (under tour header) or `'tour'` (under date header). |
+| `TourSessionCard` | Unified session card used in tour-sessions and schedule screens. `titleMode` prop controls bold top line: `'date'` (under tour header) or `'tour'` (under date header). Optional `onEditPress` shows an "Edit" link next to the time range. |
+| `TourTemplateForm` | Shared form for Create Tour and Edit Tour screens. Handles cover image pick/remove (square 160×160 preview), tour fields, and optional `onDelete` prop for the edit screen. |
 | `QRModal` | Full-screen QR code modal for a tour session (reused across screens) |
 | `DateStrip` | Horizontal scrollable date pills for the schedule tab. Auto-scrolls to active date, highlights today. |
 | `GuidePicksList` | Grouped list of guide's local recommendations by category (eat, drink, see, shop, do). Shared between guide management and guest post-tour view. Accepts optional `onEdit`/`onDelete` props for guide editing mode. |
@@ -97,10 +98,12 @@ graph TB
 
 | Token | Base Color | Usage |
 |---|---|---|
-| `tourBlue` | `#1A4B7D` | Guide primary, tab accents, branding |
-| `oceanBlue` | `#82c4da` | Guest primary, tab accents |
+| `tourBlue` | `#1A4B7D` | Guide primary, tab accents, branding, "Today" status badge |
+| `oceanBlue` | `#82c4da` | Guest primary, tab accents, "Upcoming" status badge |
 | `pinOrange` | `#FF5722` | CTAs, warnings |
-| `actionGreen` | `#4CAF50` | Success, active status |
+| `actionGreen` | `#4CAF50` | Success, "In Progress" status badge |
+| `amber` | `#d97706` | "Check-in Now" status badge |
+| `teal` | `#5f9ea0` | "Completed" status badge |
 | `charcoal` | `#333333` | Text, neutral |
 
 Each color has 50–900 shades defined in `tailwind.config.js`.
@@ -114,6 +117,7 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 | `recurrence.ts` | `generateRecurringSessions()` — generates batch session arrays from recurrence config (daily/weekly/weekday/custom); `wallClockToUTC()` / `pickerDateToUTCISO()` — timezone-safe conversion of picker values to UTC |
 | `apiError.ts` | `getApiError()` — extracts `error.response?.data?.error` with fallback |
 | `confirmAction.ts` | `confirmAction()` — reusable destructive action confirmation (Alert + async try/catch) |
+| `imageUrl.ts` | `getImageUrl()` — converts relative upload paths (e.g. `/uploads/tour_covers/abc.jpg`) to full URLs for React Native Image; passes through absolute URLs (e.g. Google profile photos) unchanged |
 
 #### Shared Hooks (`src/hooks/`)
 
@@ -174,8 +178,19 @@ Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
 | Guest | My Tours (dashboard) | Join Tour (QR/code) | Profile |
 
 Non-tab screens are hidden from the tab bar with `href: null`:
-- **Guide**: `tour_sessions`, `tour_session_details`, `tour_session_messages`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `quick_messages`, `guide_picks`, `signin`
-- **Guest**: `tour_booking_details`, `join_tour_session`, `signin`, `signup`
+- **Guide**: `tour_sessions`, `tour_session_details`, `tour_session_messages`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `quick_messages`, `guide_picks`, `tip_links`, `edit_account`, `signin`
+- **Guest**: `tour_booking_details`, `join_tour_session`, `tour_session_messages`, `signin`, `signup`
+
+#### Edit Navigation
+
+Edit screens use a `back_to` param to return to the originating screen:
+
+| Screen | Accessible from | Back/Save goes to |
+|---|---|---|
+| Edit Tour Template | My Tours (pencil icon), Tour Sessions (tap title/thumbnail) | My Tours or Tour Sessions (based on `back_to` param) |
+| Edit Session | Tour Sessions (Edit link on card), Session Details (Edit Session button) | Tour Sessions or Session Details (based on `back_to` param) |
+
+Delete Tour always returns to My Tours (since the tour no longer exists).
 
 #### Session Grouping (TabBar)
 
@@ -214,7 +229,7 @@ Tour templates on the guide's My Tours dashboard are sorted by nearest upcoming 
 |---|---|
 | Web service | Flask API (deployed from Dockerfile) |
 | PostgreSQL | Database with PostGIS extension |
-| Volume | File storage (generated QR codes, profile photos) |
+| Volume | File storage (generated QR codes, profile photos, tour cover images, tour session photos) |
 
 ## Data Model
 
@@ -304,6 +319,7 @@ erDiagram
         string meeting_place
         point meeting_coordinates
         string timezone
+        string cover_image_url
     }
 
     TourSession {
@@ -420,6 +436,7 @@ erDiagram
 - **Batch session operations** — Sessions can be created in bulk via recurrence (daily/weekly/weekday/custom, up to 52 occurrences) and deleted in bulk (single, this and following, or all for a template). Batch delete skips sessions with bookings/check-ins and reports skipped IDs to the client.
 - **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins, and cannot be deleted when in progress or completed. Session deletion must clean up all FK-dependent records: `TourCheckin`, `GuestLocation`, `GuideLocation`, `TourReview`, `TourSessionPhoto`, `TourBooking` (manual cleanup), plus `Message`, `MessagingConsent` (CASCADE), and `MessageAnalytics` (SET NULL)
 - **One review per booking** — `tour_booking_id` has a unique constraint on `tour_review`, enforced at the database level
+- **Cover image processing** — Uploaded cover images are server-side center-cropped to 1:1 aspect ratio, resized to 400×400, converted to JPEG (quality 85) using Pillow. This ensures consistent thumbnails and small file sizes regardless of the source image format or dimensions
 - **External tip payments** — Tips use an external URL (Venmo, PayPal, etc.) stored as `tip_link` on the guide profile; no in-app payment processing
 
 ## Authentication
