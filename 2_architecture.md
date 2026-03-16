@@ -92,13 +92,14 @@ Shared domain components used by both guide and guest screens.
 | Component | Purpose |
 |---|---|
 | `TourSessionHeader` | Reusable header used on Tour Sessions (guide), Session Details (guide), and Tour Details (guest). Props: `title`, `timeInfo` (duration or datetime), `meetingPlace` (with `InfoLine` location icon and optional "Map" link when `meetingCoordinates` provided), `detail` (e.g. tour code with `InfoLine` tag icon), `description` (3-line truncated), `status` (`TourSessionStatusBadge`), `coverImageUrl` (120×120 thumbnail), `action` (e.g. Edit Session button), `onTitlePress` (makes title and thumbnail tappable). Handles map navigation internally via `Linking` API. |
-| `TourSessionStatusBadge` | Maps `TourSessionStatus` to label + color, renders outline `StatusBadge`. Colors: Upcoming (ocean blue), Today (tour blue), Check-in Now (amber), In Progress (green), Completed (teal). |
+| `TourSessionStatusBadge` | Maps `TourSessionStatus` to label + color, renders outline `StatusBadge`. Colors: Upcoming (ocean blue), Today (tour blue), Check-in Open (amber), In Progress (green), Completed (teal). |
 | `TourTemplateForm` | Shared form for Create Tour and Edit Tour screens. Manages image state internally (cover image + meeting place photo) and reports changes via `ImageChanges` in `onSubmit`. Includes map picker, meeting place details, and optional `onDelete` prop. |
 | `MapPickerModal` | Full-screen map modal for setting meeting point. Features: pin drop, drag to adjust, reverse geocoding to suggest address, forward geocoding from `initialQuery` (meeting place text). Uses `DEV_FALLBACK_REGION` from constants as last resort. |
 | `QRModal` | Full-screen QR code modal for a tour session (reused across screens) |
 | `DateStrip` | Horizontal scrollable date pills for the schedule tab. Auto-scrolls to active date, highlights today. |
 | `GuidePicksList` | Grouped list of guide's local recommendations by category (eat, drink, see, shop, do). Shared between guide management and guest post-tour view. Accepts optional `onEdit`/`onDelete` props for guide editing mode. |
 | `GuideProfileModal` | Bottom-sheet modal showing guide bio, languages, specialties. Used on guest Tour Details screen. |
+| `ActiveTourBanner` | Orange/green banner for active tours (check-in open or in progress). Takes raw `startDatetime`, `endDatetime`, `timezone` and handles its own time formatting and status calculation internally. Used on guide dashboard, guide schedule, and guest dashboard. |
 
 #### Guide Components (`src/components/guide/`)
 
@@ -130,7 +131,7 @@ Guest-specific components, not used by guide screens.
 | `oceanBlue` | `#82c4da` | Guest primary, tab accents, "Upcoming" status badge |
 | `pinOrange` | `#FF5722` | CTAs, warnings |
 | `actionGreen` | `#4CAF50` | Success, "In Progress" status badge |
-| `amber` | `#d97706` | "Check-in Now" status badge |
+| `amber` | `#d97706` | "Check-in Open" status badge |
 | `teal` | `#5f9ea0` | "Completed" status badge |
 | `charcoal` | `#333333` | Text, neutral |
 

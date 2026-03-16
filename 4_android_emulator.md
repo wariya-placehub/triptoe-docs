@@ -311,5 +311,7 @@ When you install a new package that contains native code (like `expo-image-picke
 | Changed `app.json` but nothing happened | `app.json` changes (icon, permissions, name) require `npx expo prebuild --clean` then `npx expo run:android` |
 | **"App react context shouldn't be created before"** crash | Stale native build cache. Run `cd android && ./gradlew clean`, then rebuild with `npx expo run:android` (or manually install APK with `adb`). |
 | **"There was a problem loading the project"** screen | Often caused by invalid deep links (URI schema) or stale JS bundle. Tap **"Go To Home"** or **"Reload"** on the emulator screen. If persistent, restart Metro with `npx expo start -c`. |
+| **Emulator stuck "Reloading" from `192.168...`** | The emulator is trying to use your laptop's Wi-Fi IP instead of the stable machine IP. Force it back to `10.0.2.2` by clearing the app cache: `adb -s <device-id> shell pm clear com.triptoe.mobile`, then restart the app: `adb -s <device-id> shell am start -a android.intent.action.VIEW -d "exp+triptoe-mobile://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081"`. |
+| **Emulator has no internet / Can't see backend** | Sometimes the internal bridge hangs. "Wake it up" by pinging your computer from inside the emulator: `adb -s <device-id> shell ping -c 3 10.0.2.2`. |
 
 
