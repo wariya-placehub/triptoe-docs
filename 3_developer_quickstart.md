@@ -149,10 +149,11 @@ DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/triptoe
 JWT_SECRET_KEY=another-random-string
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
+RESEND_API_KEY=your-resend-api-key
 CORS_ORIGINS=*
 ```
 
-Replace `yourpassword` with the password you set for the `postgres` user when you installed PostgreSQL. For `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, use the Web client credentials from step 4.
+Replace `yourpassword` with the password you set for the `postgres` user when you installed PostgreSQL. For `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, use the Web client credentials from step 4. For `RESEND_API_KEY`, sign up at [resend.com](https://resend.com) and create an API key. Without it, verification codes are logged to the backend console instead of emailed.
 
 ## 7. Set Up the Mobile App
 
@@ -219,7 +220,7 @@ The first build takes several minutes. Once complete, the app will open on the e
 ### Guest Flow
 1. Open the app on the emulator
 2. Tap "I'm a Guest"
-3. Sign up with name and email, then enter the 6-digit code (check the backend console log for the code)
+3. Sign up with name and email, then enter the 6-digit code (sent to your email via Resend, or check the backend console log if `RESEND_API_KEY` is not set)
 4. Join a tour by entering the tour code or scanning a QR code
 5. Check in and share location during the tour
 
@@ -233,9 +234,9 @@ The first build takes several minutes. Once complete, the app will open on the e
 7. Tap a specific session to see the live map and guest check-ins
 
 ### Returning Guest
-1. Tap "I'm a Guest" > "Already have an account? Sign in"
+1. Tap "I'm a Guest" (if you've logged in before, this goes directly to sign-in)
 2. Enter your email
-3. Enter the 6-digit code (check the backend console log for the code)
+3. Enter the 6-digit code (sent to your email via Resend, or check the backend console log if `RESEND_API_KEY` is not set)
 4. View booked tour sessions on the dashboard (My Tours)
 
 ## 10. Common Issues

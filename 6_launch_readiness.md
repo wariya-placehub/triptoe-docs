@@ -3,21 +3,22 @@
 Checklist of remaining work before production launch.
 
 ## Infrastructure
-- [ ] Register a domain (e.g. triptoe.app, triptoe.io)
-- [ ] Set up email service (Resend) for verification codes — requires domain
+- [x] Register domain: `triptoe.app` (Cloudflare)
+- [x] Set up email service (Resend) for verification codes — domain `triptoe.app` verified, sending from `noreply@triptoe.app`
 - [ ] Deploy backend to Railway
 - [ ] Set up PostgreSQL on Railway
 - [ ] Configure environment variables on Railway
 
 ## Backend
-- [ ] Replace console-logged verification codes with real email delivery
+- [x] Replace console-logged verification codes with real email delivery (Resend)
 - [ ] Set up production WSGI server (gunicorn)
 - [ ] Use a longer/stronger JWT secret key (current one triggers InsecureKeyLengthWarning)
 - [ ] Move database sequences to correct schemas (some still in public)
 - [ ] Add profile image upload to Railway volume
 
 ## Mobile
-- [ ] Test push notifications on a physical device (won't work on emulator — requires `eas build` + real device, then use Expo Push Tool or guide message to verify delivery)
+- [x] Push notifications working on physical devices — Firebase project `triptoe-app` created, FCM credentials uploaded to Expo, `google-services.json` in mobile project, token registration on login
+- [x] Pull-to-refresh on all data screens (guide + guest)
 - [ ] Test Google Sign-In on a physical device
 - [ ] Set up EAS Build for production builds
 - [ ] App store listing (Google Play, Apple App Store)
@@ -35,9 +36,12 @@ Checklist of remaining work before production launch.
 - [ ] Guide: edit profile (name, languages, specialties)
 - [ ] Guest: edit profile (name, notification preferences)
 - [ ] Guest: receive push notification when tour session is about to start
+- [x] Guest: messaging banner visible before check-in (guides can send updates like location changes or delays to all booked guests)
+- [x] Guest: returning guest goes to sign-in instead of sign-up on landing page
 - [x] Guide: send messages to booked guests
 - [x] Guide: quick messages (reusable message presets, create/edit/delete)
-- [x] Guide: upload group photos for completed sessions
+- [x] Guide: multi-photo upload for completed sessions (select multiple from gallery)
+- [x] Guest: push notification tap opens tour booking details
 - [x] Guide: view guest ratings and reviews for completed sessions
 - [x] Guide: tip link on profile (external payment URL)
 - [x] Guide: Guide's Picks — curate local recommendations (eat, drink, see, shop, do) for guests

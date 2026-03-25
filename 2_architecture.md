@@ -33,6 +33,7 @@ graph TB
     end
 
     subgraph "External Services"
+        RESEND[Resend Email API]
         EXPO[Expo Push Service]
         APNS[Apple APNs]
         FCM[Google FCM]
@@ -41,6 +42,7 @@ graph TB
     APP -->|REST API + JWT| API
     API --> DB
     API --> FILES
+    API -->|Send verification emails| RESEND
     API -->|Send push| EXPO
     EXPO --> APNS
     EXPO --> FCM
@@ -66,6 +68,7 @@ graph TB
 | Date/time pickers | @react-native-community/datetimepicker |
 | Push notifications | expo-notifications |
 | QR scanning | expo-camera |
+| Network images | expo-image (uses Coil on Android — does not cache failed loads unlike React Native's Fresco) |
 | Secure storage | expo-secure-store (for JWT tokens) |
 
 #### UI Component Library (`src/components/ui/`)
@@ -257,7 +260,8 @@ Tour templates on the guide's My Tours dashboard are sorted by nearest upcoming 
 | Migrations | Raw SQL scripts (manually applied) |
 | Database | PostgreSQL + PostGIS |
 | Auth | Google OAuth (guides) + email verification code (guests) + flask-jwt-extended |
-| Push notifications | HTTP POST to Expo Push API |
+| Email | Resend (verification codes for guest signup/sign-in) |
+| Push notifications | HTTP POST to Expo Push API (requires Firebase/FCM for Android delivery) |
 | File storage | Railway volume (local disk) |
 | CORS | Flask-CORS |
 | Scheduled jobs | APScheduler (BackgroundScheduler) |
