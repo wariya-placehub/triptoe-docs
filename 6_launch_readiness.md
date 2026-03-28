@@ -20,9 +20,16 @@ Checklist of remaining work before production launch.
 - [x] Push notifications working on physical devices — Firebase project `triptoe-app` created, FCM credentials uploaded to Expo, `google-services.json` in mobile project, token registration on login
 - [x] Pull-to-refresh on all data screens (guide + guest)
 - [ ] Test Google Sign-In on a physical device
-- [ ] Set up EAS Build for production builds
+- [x] Local build script (`build-and-upload.bat`) — builds APK, uploads to GCS (`gs://triptoe-apk/`), displays QR code
+- [x] Google Play Developer account created (identity verified)
+- [x] Privacy policy live at `triptoe.app/privacy`
+- [x] Account deletion page live at `triptoe.app/delete-account`
+- [x] Account deletion endpoint (`DELETE /api/v1/auth/account`) and in-app delete button (guide + guest)
+- [x] Privacy policy link added to guide and guest Account screens
+- [x] Email routing: `support@triptoe.app` → Gmail (Cloudflare Email Routing)
+- [x] Static site hosted on Cloudflare Workers & Pages (`triptoe-docs/site/`)
 - [ ] App store listing (Google Play, Apple App Store)
-- [x] Implement background location tracking (expo-location background mode)
+- [x] Implement background location tracking (expo-location background mode) — both guide and guest
 
 ## Features
 - [x] Guide: edit tour template details (edit-tour screen)

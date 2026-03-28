@@ -276,13 +276,13 @@ eas update --branch production --message "Fix booking display"
 
 ### When to Rebuild What
 
-| Change | Backend (`railway up`) | Mobile APK (`eas build`) |
+| Change | Backend (`railway up`) | Mobile APK (`build-and-upload.bat` or `eas build`) |
 |---|---|---|
 | Backend code (Python, Dockerfile) | Yes | No |
 | Backend environment variables | No (set in Railway dashboard) | No |
-| Mobile JS/TS code only | No | No (use `eas update`) |
-| Mobile native code (new packages, app.json, android/) | No | Yes (`--clear-cache`) |
-| Mobile `.env` / `.env.production` | No | Yes |
+| Mobile JS/TS code only | No | `build-and-upload.bat` (local) or `eas update` (OTA) |
+| Mobile native code (new packages, app.json, android/) | No | `build-and-upload.bat` (local) or `eas build --clear-cache` |
+| Mobile `.env` / `.env.production` | No | Yes (rebuild required) |
 
 ### Backend
 
@@ -300,6 +300,20 @@ railway logs --follow
 ```
 
 ### Mobile App
+
+**Local build (recommended — no EAS build limits):**
+
+```bash
+cd triptoe-mobile
+build-and-upload.bat
+# Builds APK, uploads to GCS, shows QR code to scan and install
+```
+
+The APK is uploaded to `gs://triptoe-apk/triptoe.apk` and downloadable at `https://storage.googleapis.com/triptoe-apk/triptoe.apk`.
+
+Requires `gcloud` configured with a `triptoe` configuration (`wariyak@gmail.com`, project `triptoe-489605`). The script switches to the triptoe config for upload and switches back to default after.
+
+**EAS build (cloud — 30 free builds/month):**
 
 ```
 cd triptoe-mobile
@@ -381,6 +395,27 @@ The backend exposes `GET /health` which returns:
 ```
 
 Use this endpoint for uptime monitoring (e.g. UptimeRobot, Better Uptime).
+
+## Static Site (Cloudflare Workers & Pages)
+
+The privacy policy and account deletion pages are hosted as static HTML on Cloudflare Workers.
+
+**Source files:** `triptoe-docs/site/`
+- `privacy.html` → `https://triptoe.app/privacy`
+- `delete-account.html` → `https://triptoe.app/delete-account`
+
+**Worker name:** `restless-flower-1f1a` (on `wariyak.workers.dev`)
+**Custom domain:** `triptoe.app`
+
+### Updating the site
+
+1. Edit files in `triptoe-docs/site/`
+2. Go to Cloudflare → Workers & Pages → `restless-flower-1f1a` → **New deployment**
+3. Upload the files from `triptoe-docs/site/` and deploy
+
+## Email Routing
+
+`support@triptoe.app` forwards to `wariyak@gmail.com` via Cloudflare Email Routing. Configure at Cloudflare → `triptoe.app` → Email → Email Routing.
 
 ## Cost Estimate
 

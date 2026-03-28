@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TripToe — Delete Account</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; color: #333; line-height: 1.7; }
+    h1 { font-size: 24px; margin-bottom: 4px; }
+    p { font-size: 15px; }
+    .subtitle { color: #888; font-size: 14px; margin-bottom: 32px; }
+    label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 4px; margin-top: 16px; }
+    input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+    textarea { min-height: 80px; resize: vertical; }
+    button { margin-top: 24px; width: 100%; padding: 12px; background: #e53e3e; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; }
+    button:hover { background: #c53030; }
+    .info { background: #f7f7f7; padding: 16px; border-radius: 8px; margin-top: 24px; font-size: 14px; }
+    .success { display: none; background: #f0fff4; border: 1px solid #c6f6d5; padding: 16px; border-radius: 8px; margin-top: 24px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Delete Your TripToe Account</h1>
+  <p class="subtitle">Request deletion of your account and personal data.</p>
+
+  <div class="info">
+    <strong>What happens when you delete your account:</strong>
+    <ul style="margin: 8px 0 0 0; padding-left: 20px;">
+      <li>Your personal data (name, email, phone number, profile photo) will be deleted</li>
+      <li>Your push notification tokens will be removed</li>
+      <li>Non-identifying records (anonymous booking counts) may be retained for guide reporting</li>
+      <li>This action cannot be undone</li>
+    </ul>
+  </div>
+
+  <form id="deleteForm" onsubmit="handleSubmit(event)">
+    <label for="email">Email address associated with your account</label>
+    <input type="email" id="email" name="email" required placeholder="you@example.com">
+
+    <label for="userType">Account type</label>
+    <select id="userType" name="userType" required>
+      <option value="">Select...</option>
+      <option value="guest">Guest</option>
+      <option value="guide">Tour Guide</option>
+    </select>
+
+    <label for="reason">Reason (optional)</label>
+    <textarea id="reason" name="reason" placeholder="Why are you deleting your account?"></textarea>
+
+    <button type="submit">Request Account Deletion</button>
+  </form>
+
+  <div class="success" id="successMsg">
+    <strong>Request received.</strong> We will process your account deletion within 7 business days and send a confirmation to your email. If you have questions, contact <a href="mailto:support@triptoe.app">support@triptoe.app</a>.
+  </div>
+
+  <script>
+    function handleSubmit(e) {
+      e.preventDefault();
+      var email = document.getElementById('email').value;
+      var userType = document.getElementById('userType').value;
+      var reason = document.getElementById('reason').value;
+
+      // Send deletion request via email
+      var subject = encodeURIComponent('Account Deletion Request');
+      var body = encodeURIComponent(
+        'Account deletion request:\n\n' +
+        'Email: ' + email + '\n' +
+        'Account type: ' + userType + '\n' +
+        'Reason: ' + (reason || 'Not provided') + '\n'
+      );
+      window.open('mailto:support@triptoe.app?subject=' + subject + '&body=' + body, '_blank');
+
+      document.getElementById('deleteForm').style.display = 'none';
+      document.getElementById('successMsg').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
