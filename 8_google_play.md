@@ -8,7 +8,7 @@ Audience: Product Manager, Dev/Ops
 TripToe
 
 ### Short Description (80 chars max)
-Connect with your tour guide. Live location, messages, and group photos.
+One app for guides and guests. Live updates, check-ins, messaging, and more
 
 ### Full Description
 TripToe connects tour guides with their guests during walking and bus tours.
@@ -41,28 +41,38 @@ tour guide, walking tour, group tour, travel, location sharing
 
 ## Required Assets
 
-### Screenshots (minimum 2, recommended 4-8)
-- [ ] Guest: tour booking details screen (shows tour info, meeting point, guide)
-- [ ] Guest: live location sharing during tour
-- [ ] Guest: post-tour screen (review, photos, guide's picks)
-- [ ] Guide: dashboard with tour list
-- [ ] Guide: session details with live map and guest locations
-- [ ] Guide: compose message to guests
+### Screenshots
+Stored in `triptoe-docs/screenshots/`. Cropped to 1080x1920 (9:16) with status bar and navigation bar removed. Originals in `screenshots - Copy/`.
 
-**Specs:** JPEG or PNG, 16:9 or 9:16, min 320px, max 3840px on any side.
+Recommended upload order (max 8):
+1. `1_landing_page.png` — role selection
+2. `2_tour_template.png` — guide tour list
+3. `3_tour_sessions.png` — session scheduling
+4. `4_session_details.png` — live session with map and guests
+5. `4_session_map.png` — full-screen guest location map
+6. `5_message_modal.png` — message all guests
+7. `7_guest_tour_details.png` — guest meeting point details
+8. `8_post_tour.png` — Guide's Picks post-tour
 
 ### Feature Graphic
-- [ ] 1024x500 banner image (displayed at top of store listing)
+`triptoe-docs/play-store-feature.png` — 1024x500, white background, horizontal TripToe logo with tagline.
 
 ### App Icon
-- [ ] 512x512 PNG (already configured in `app.json` — EAS uploads this automatically)
+`triptoe-docs/play-store-icon.png` — 512x512, resized from `triptoe-mobile/assets/icon.png`.
 
-## Privacy Policy
+## Privacy & Account Deletion
 
-**Required by Google Play.** Must be a publicly accessible URL.
+Hosted on Cloudflare Workers (`restless-flower-1f1a`) with custom domain `triptoe.app`.
 
-- [ ] Host at `https://triptoe.app/privacy` (or any public URL)
-- [ ] Must cover: what data is collected, how it's used, third-party services, data retention, contact info
+| Page | URL | Source |
+|------|-----|--------|
+| Privacy Policy | `https://triptoe.app/privacy` | `triptoe-docs/site/privacy.html` |
+| Account Deletion | `https://triptoe.app/delete-account` | `triptoe-docs/site/delete-account.html` |
+
+Deployment: `cd triptoe-docs/site && npx wrangler deploy`
+
+### Account Deletion Flow
+The deletion form at `/delete-account` POSTs to the backend endpoint `POST /api/v1/auth/request-account-deletion`. The backend sends an email to `support@triptoe.app` via Resend with the user's email, account type, and reason. No `mailto:` — the request is submitted directly.
 
 ### Data collected by TripToe:
 | Data | Purpose | Retention |
@@ -95,27 +105,47 @@ Answers to expect:
 - Shares location: Yes
 - Collects personal data: Yes (email, name, location)
 
+## App Access (Test Account)
+
+Google Play reviewers need credentials to test the app. A test bypass is hardcoded in the backend:
+
+- **Email:** `support@triptoe.com`
+- **Code:** `654321`
+- **Instructions:** Tap "I'm a Guest", enter any name and email `support@triptoe.com`. On the verification code screen, enter `654321`.
+
+This bypass is in `auth.py` — it skips sending a real verification email and accepts the fixed code for this email only. The bypass applies to all 4 guest auth endpoints: `guest_signup`, `guest_signup_verify`, `guest_request_code`, `guest_verify_code`.
+
 ## Pre-Submission Checklist
 
-- [ ] Google Play Developer account ($25 one-time) at [play.google.com/console](https://play.google.com/console)
-- [ ] Production Google OAuth Android client (SHA-1 from `eas credentials --platform android`)
-- [ ] Privacy policy hosted and accessible
-- [ ] Screenshots captured
-- [ ] Feature graphic created
-- [ ] Production build: `eas build --platform android --profile production --clear-cache`
-- [ ] Submit: `eas submit --platform android`
+- [x] Google Play Developer account at [play.google.com/console](https://play.google.com/console)
+- [x] Identity verification completed
+- [x] App created in console
+- [x] Privacy policy hosted at `https://triptoe.app/privacy`
+- [x] Account deletion page at `https://triptoe.app/delete-account`
+- [x] Screenshots cropped and ready
+- [x] Feature graphic created
+- [x] App icon (512x512) created
+- [ ] Store listing completed (descriptions, screenshots, graphics uploaded)
+- [ ] Content rating questionnaire completed
+- [ ] Target audience declared
+- [ ] Data safety form completed
+- [ ] App category and contact details set
+- [ ] App signing configured
+- [ ] Release uploaded (internal testing track)
+- [ ] Production rollout
 
-## Build & Submit Commands
+## Build & Submit
 
 ```bash
-# Production build (AAB for Google Play)
-eas build --platform android --profile production --clear-cache
+cd triptoe-mobile
 
-# Submit to Google Play
-eas submit --platform android
+# Build AAB for Google Play
+build.bat aab
+# Output: android\app\build\outputs\bundle\release\app-release.aab
 
-# Check build status
-eas build:list --limit 1
+# Build APK for sideload testing
+build.bat apk       # full build
+build.bat apk fast  # skip prebuild (code-only changes)
 ```
 
-The production profile builds an AAB (Android App Bundle) which can only be uploaded to Google Play — it cannot be sideloaded like the preview APK.
+Upload the AAB to Google Play Console → Test and release → Internal testing (or Production).

@@ -176,25 +176,54 @@ eas build:configure
 
 This creates an `eas.json` with build profiles.
 
-### Google OAuth for Production Builds
+### Release Keystore
 
-The production/preview APK is signed with a different keystore than the debug build. Google OAuth requires the SHA-1 fingerprint of each keystore to be registered.
+The release keystore signs both APK and AAB builds. It lives at `triptoe-mobile/triptoe-release.keystore` (gitignored).
 
-1. Get the production SHA-1 fingerprint:
+**How it was created:**
 
 ```bash
-eas credentials --platform android
-# Select the build profile (preview or production)
-# Note the SHA1 Fingerprint
+keytool -genkey -v \
+  -keystore triptoe-release.keystore \
+  -alias triptoe-alias \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000 \
+  -storepass <password> \
+  -keypass <password> \
+  -dname "CN=TripToe, O=TripToe, L=Austin, ST=Texas, C=US"
 ```
 
-2. In [Google Cloud Console](https://console.cloud.google.com) > **APIs & Services** > **Credentials**:
-   - Create a **new** OAuth client ID (don't replace the existing debug one)
-   - Application type: **Android**
-   - Package name: `com.triptoe.mobile`
-   - SHA-1: the fingerprint from step 1
+Password is stored in `keystore.properties` (gitignored). Never hardcode it in docs or code.
 
-The app uses the **Web client ID** (`EXPO_PUBLIC_GOOGLE_CLIENT_ID`) for the actual OAuth flow. The Android client entries just tell Google which app signatures are allowed.
+**Get SHA-1 fingerprint:**
+
+```bash
+keytool -list -v -keystore triptoe-release.keystore -alias triptoe-alias -storepass <password>
+```
+
+**Export PEM certificate (for Google Play upload key reset):**
+
+```bash
+keytool -export -rfc -keystore triptoe-release.keystore -alias triptoe-alias -storepass <password> -file triptoe_playstore.pem
+```
+
+Passwords are stored in `triptoe-mobile/keystore.properties` (gitignored). The build script (`build.bat`) injects the signing config via `scripts/patch-signing.ps1` after `expo prebuild`.
+
+**IMPORTANT:** Back up this keystore. If lost, you cannot update the app on Google Play — you'd have to create a new app listing.
+
+### Google OAuth Credentials
+
+Google Cloud Console project: `triptoe-489605`
+
+Two OAuth credentials in **APIs & Services** → **Credentials**:
+
+| Name | Type | Purpose |
+|------|------|---------|
+| **TripToe OAuth** | Web application | Client ID used in code (`EXPO_PUBLIC_GOOGLE_CLIENT_ID`). Used by both mobile app and backend. |
+| **TripToe Mobile** | Android | Registers the release keystore SHA-1 + package name (`com.triptoe.mobile`) so Google allows sign-in from this app. |
+
+When the keystore changes, update the SHA-1 in **TripToe Mobile** at Google Cloud Console.
 
 ### Building for App Stores
 
@@ -276,13 +305,13 @@ eas update --branch production --message "Fix booking display"
 
 ### When to Rebuild What
 
-| Change | Backend (`railway up`) | Mobile APK (`build-and-upload.bat` or `eas build`) |
+| Change | Backend (`railway up`) | Mobile (`build.bat`) |
 |---|---|---|
 | Backend code (Python, Dockerfile) | Yes | No |
 | Backend environment variables | No (set in Railway dashboard) | No |
-| Mobile JS/TS code only | No | `build-and-upload.bat` (local) or `eas update` (OTA) |
-| Mobile native code (new packages, app.json, android/) | No | `build-and-upload.bat` (local) or `eas build --clear-cache` |
-| Mobile `.env` / `.env.production` | No | Yes (rebuild required) |
+| Mobile JS/TS code only | No | `build.bat apk fast` (or `eas update` OTA) |
+| Mobile native code (new packages, app.json, android/) | No | `build.bat apk` (full build) or `eas build --clear-cache` |
+| Mobile `.env` / `.env.production` | No | Yes (full build required) |
 
 ### Backend
 
@@ -305,13 +334,26 @@ railway logs --follow
 
 ```bash
 cd triptoe-mobile
-build-and-upload.bat
-# Builds APK, uploads to GCS, shows QR code to scan and install
+
+# Build APK for testing (full build with prebuild + signing):
+build.bat apk
+
+# Build APK fast (skip prebuild, reuse cached android/ folder):
+build.bat apk fast
+
+# Build AAB for Google Play (always full build):
+build.bat aab
 ```
+
+- `build.bat apk` — builds a signed APK, uploads to GCS, shows QR code to scan and install
+- `build.bat apk fast` — skips `expo prebuild`, reuses cached `android/` folder for faster builds when only JS/TS code changed (no `app.json`, plugin, or permission changes)
+- `build.bat aab` — builds a signed AAB for upload to Google Play Console
 
 The APK is uploaded to `gs://triptoe-apk/triptoe.apk` and downloadable at `https://storage.googleapis.com/triptoe-apk/triptoe.apk`.
 
 Requires `gcloud` configured with a `triptoe` configuration (`wariyak@gmail.com`, project `triptoe-489605`). The script switches to the triptoe config for upload and switches back to default after.
+
+**Signing:** All builds use the release keystore (`triptoe-release.keystore` in project root). Passwords are stored in `keystore.properties` (gitignored). The build script runs `scripts/patch-signing.ps1` after prebuild to inject the release signing config into the generated `build.gradle`.
 
 **EAS build (cloud — 30 free builds/month):**
 
@@ -351,6 +393,14 @@ eas submit --platform android
 | `RESEND_FROM_EMAIL` | No | Sender address (default: `TripToe <noreply@triptoe.app>`) |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins (default: `*`) |
 | `UPLOAD_FOLDER` | No | Path for file storage (default: `/uploads`) |
+| `ACTIVE_LOCATION_THRESHOLD_MINUTES` | No | How recent a location must be to count as active (default: `2`) |
+| `STRAGGLER_THRESHOLD_METERS` | No | Distance from guide before guest is flagged as straggler (default: `50`) |
+| `DUPLICATE_CHECKIN_PREVENTION_MINUTES` | No | Window to prevent duplicate check-ins (default: `5`) |
+| `CHECKIN_WINDOW_MINUTES` | No | How early before start time guests can check in (default: `30`) |
+| `PAST_SESSIONS_LOOKBACK_DAYS` | No | How many days of past sessions to show (default: `7`) |
+| `MESSAGING_PRE_TOUR_HOURS` | No | Hours before tour start that messaging opens (default: `48`) |
+| `MESSAGING_POST_TOUR_HOURS` | No | Hours after tour end that messaging closes (default: `24`) |
+| `POST_TOUR_NOTIFICATION_DELAY_MINUTES` | No | Delay after tour ends before sending post-tour notification (default: `30`) |
 
 ### Mobile App (build-time)
 
@@ -410,8 +460,14 @@ The privacy policy and account deletion pages are hosted as static HTML on Cloud
 ### Updating the site
 
 1. Edit files in `triptoe-docs/site/`
-2. Go to Cloudflare → Workers & Pages → `restless-flower-1f1a` → **New deployment**
-3. Upload the files from `triptoe-docs/site/` and deploy
+2. Deploy via CLI:
+
+```bash
+cd triptoe-docs/site
+npx wrangler deploy
+```
+
+Requires Cloudflare login (`npx wrangler login`). Config is in `triptoe-docs/site/wrangler.toml`.
 
 ## Email Routing
 

@@ -100,9 +100,8 @@ All clients live in the same Google Cloud project:
 
 | Name | Type | Used in | Notes |
 |---|---|---|---|
-| TripToe Web | Web application | `GOOGLE_CLIENT_ID` in backend `.env` and `EXPO_PUBLIC_GOOGLE_CLIENT_ID` in mobile `.env` | Same for dev and prod |
-| TripToe Android Debug | Android | Auto-selected during local development | SHA-1 from `debug.keystore` |
-| TripToe Android Prod | Android | Auto-selected in app store builds | SHA-1 from EAS production keystore (create later) |
+| TripToe OAuth | Web application | `GOOGLE_CLIENT_ID` in backend `.env` and `EXPO_PUBLIC_GOOGLE_CLIENT_ID` in mobile `.env` | Same for dev and prod |
+| TripToe Mobile | Android | Auto-selected during builds | SHA-1 from `triptoe-release.keystore` |
 | TripToe iOS | iOS | Auto-selected on iOS devices | Create if building for iOS |
 
 **For iOS**, create an OAuth client with application type **iOS** and bundle ID `com.triptoe.mobile`. The same iOS client works for both dev and prod.

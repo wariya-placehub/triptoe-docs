@@ -570,49 +570,83 @@ sequenceDiagram
 
 ## Location Tracking
 
+Both guide and guest use the same mechanism: `expo-location` background location updates via `TaskManager`. A shared `backgroundLocation.ts` service handles both user types — the only difference is which API endpoint receives the updates and when tracking starts.
+
 ### How It Works
 
+**Guest:**
 1. Guest checks into a tour session (check-in does **not** auto-start location sharing)
 2. Guest explicitly taps "Start Sharing Location" to opt in
-3. Mobile app requests **Foreground Permissions** and then **Background Location** permission ("Allow all the time").
-4. The app starts a **Foreground Service** (required for Android 14+).
-5. A persistent notification is shown to the user while sharing is active.
-6. Mobile app uses `expo-location` + `TaskManager` to update position even when the app is in the background.
-7. Location updates sent to backend via `POST /api/v1/location/update`
-8. Guide's map view polls `GET /api/v1/tour-sessions/{session_id}/locations` every 10s.
-9. Location sharing stops automatically when the tour ends or the user taps "Stop Sharing".
+3. App requests foreground + background location permission
+4. `startBackgroundLocationUpdates(tourSessionId, 'guest')` begins sending to `POST /location/update`
+5. Guest taps "Stop Sharing" or the tour ends → tracking stops
+
+**Guide:**
+1. Guide opens session details while the session is active (status: `check_in_open` or `in_progress`)
+2. App automatically requests foreground + background location permission
+3. `startBackgroundLocationUpdates(tourSessionId, 'guide')` begins sending to `POST /location/guide/update`
+4. Tracking stops when the guide leaves the screen or the session completes
+
+### Shared Background Location Service (`backgroundLocation.ts`)
+
+- Single `TaskManager` background task shared by both user types
+- `userType` parameter determines the API endpoint (`/location/update` for guests, `/location/guide/update` for guides)
+- Uses `fetch` (not Axios) because the task runs outside React
+- Reads JWT from `SecureStore` for authentication
+- Shows a persistent foreground service notification (required for Android 14+)
+- Configurable via constants: `LOCATION_UPDATE_INTERVAL_SECONDS`, `LOCATION_UPDATE_DISTANCE_METERS`
+
+### Map Display
+
+Both guide and guest maps display positions by **polling the backend** — no local position state:
+
+- **Guide map** polls `GET /tour-sessions/{session_id}/locations` which returns all guest locations + the guide's own location
+- **Guest map** polls `GET /tour-sessions/{session_id}/sync` which returns the guide's location + the guest's own location
+
+This means all map positions go through the same path: device → background task → backend → polling → map. No special handling for the phone owner's position.
 
 ### Location Data Flow
 
 ```mermaid
 sequenceDiagram
     participant Guest as Guest App
+    participant Guide as Guide App
     participant API as Flask API
     participant DB as PostgreSQL
-    participant Guide as Guide App
 
-    Guest->>Guest: Start Foreground Service
-    Note right of Guest: Persistent Notification shown
-    loop Every 10-30 seconds
-        Guest->>API: POST /location/update {tour_session_id, lat, lng, accuracy}
+    Note over Guest, Guide: Background location task (both roles)
+    loop Every 15 seconds
+        Guest->>API: POST /location/update {tour_session_id, lat, lng}
         API->>DB: Insert GuestLocation row
+        Guide->>API: POST /location/guide/update {tour_session_id, lat, lng}
+        API->>DB: Insert GuideLocation row
     end
 
-    loop Guide polls (every 10s)
+    Note over Guide: Guide polls for all positions
+    loop Every 15 seconds
         Guide->>API: GET /tour-sessions/{session_id}/locations
-        API->>DB: Query latest location per guest
-        DB->>API: GuestLocation records
-        API->>Guide: [{guest_uid, lat, lng, accuracy, recorded_at}]
+        API->>DB: Query latest GuestLocation + GuideLocation
+        API->>Guide: {guests: [...], guide_location: {...}}
         Guide->>Guide: Update map markers
+    end
+
+    Note over Guest: Guest polls for positions
+    loop Every 25 seconds
+        Guest->>API: GET /tour-sessions/{session_id}/sync
+        API->>DB: Query latest GuideLocation + own GuestLocation
+        API->>Guest: {guide_location: {...}, my_location: {...}}
+        Guest->>Guest: Update map markers
     end
 ```
 
 ### Privacy & Technical Requirements
 
-- **Consent**: Location is only collected when the guest has explicitly enabled sharing.
-- **Android 14+**: Requires `FOREGROUND_SERVICE_LOCATION` permission and `foregroundServiceType="location"` in the Manifest.
-- **Background Access**: User must manually select "Allow all the time" in Android settings.
-- **Notifications**: Notification permission must be granted for the foreground service to run.
+- **Guest consent**: Location is only collected when the guest has explicitly tapped "Start Sharing Location"
+- **Guide consent**: Location sharing starts automatically when the session is active, but requires location permission grant
+- **Android 14+**: Requires `FOREGROUND_SERVICE_LOCATION` permission and `foregroundServiceType="location"` in the Manifest
+- **Background access**: User must grant "Allow all the time" for background location
+- **No persistent storage**: Location data is not stored after the tour session ends
+- **Foreground service notification**: Persistent notification shown while tracking is active ("Sharing your location with your tour guide/guests")
 
 ## Push Notifications
 
@@ -669,7 +703,7 @@ device_token
 | `/api/v1/guides` | Guide-specific views: `GET /guides/upcoming-sessions` (all upcoming sessions with template data, single JOIN query) |
 | `/api/v1/bookings` | Guest bookings (by code or QR scan) |
 | `/api/v1/checkins` | Guest check-in, update location sharing preference |
-| `/api/v1/location` | Guest location updates, stop sharing |
+| `/api/v1/location` | Guest + guide location updates, stop sharing |
 | `/api/v1/reviews` | Guest review submission, guide review retrieval |
 | `/api/v1/messages` | Broadcast and direct messaging |
 | `/api/v1/messaging` | Quick message management (guide's reusable message presets) |

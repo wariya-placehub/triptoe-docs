@@ -14,8 +14,10 @@
     textarea { min-height: 80px; resize: vertical; }
     button { margin-top: 24px; width: 100%; padding: 12px; background: #e53e3e; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; }
     button:hover { background: #c53030; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
     .info { background: #f7f7f7; padding: 16px; border-radius: 8px; margin-top: 24px; font-size: 14px; }
     .success { display: none; background: #f0fff4; border: 1px solid #c6f6d5; padding: 16px; border-radius: 8px; margin-top: 24px; font-size: 14px; }
+    .error { display: none; background: #fff5f5; border: 1px solid #feb2b2; padding: 16px; border-radius: 8px; margin-top: 24px; font-size: 14px; color: #c53030; }
   </style>
 </head>
 <body>
@@ -46,32 +48,47 @@
     <label for="reason">Reason (optional)</label>
     <textarea id="reason" name="reason" placeholder="Why are you deleting your account?"></textarea>
 
-    <button type="submit">Request Account Deletion</button>
+    <button type="submit" id="submitBtn">Request Account Deletion</button>
   </form>
 
   <div class="success" id="successMsg">
     <strong>Request received.</strong> We will process your account deletion within 7 business days and send a confirmation to your email. If you have questions, contact <a href="mailto:support@triptoe.app">support@triptoe.app</a>.
   </div>
 
+  <div class="error" id="errorMsg">
+    Something went wrong. Please try again or email <a href="mailto:support@triptoe.app">support@triptoe.app</a> directly.
+  </div>
+
   <script>
-    function handleSubmit(e) {
+    async function handleSubmit(e) {
       e.preventDefault();
-      var email = document.getElementById('email').value;
-      var userType = document.getElementById('userType').value;
-      var reason = document.getElementById('reason').value;
+      var btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+      document.getElementById('errorMsg').style.display = 'none';
 
-      // Send deletion request via email
-      var subject = encodeURIComponent('Account Deletion Request');
-      var body = encodeURIComponent(
-        'Account deletion request:\n\n' +
-        'Email: ' + email + '\n' +
-        'Account type: ' + userType + '\n' +
-        'Reason: ' + (reason || 'Not provided') + '\n'
-      );
-      window.open('mailto:support@triptoe.app?subject=' + subject + '&body=' + body, '_blank');
+      try {
+        var res = await fetch('https://triptoe-backend-production.up.railway.app/api/v1/auth/request-account-deletion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            user_type: document.getElementById('userType').value,
+            reason: document.getElementById('reason').value
+          })
+        });
 
-      document.getElementById('deleteForm').style.display = 'none';
-      document.getElementById('successMsg').style.display = 'block';
+        if (res.ok) {
+          document.getElementById('deleteForm').style.display = 'none';
+          document.getElementById('successMsg').style.display = 'block';
+        } else {
+          throw new Error('Request failed');
+        }
+      } catch (err) {
+        document.getElementById('errorMsg').style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Request Account Deletion';
+      }
     }
   </script>
 </body>
