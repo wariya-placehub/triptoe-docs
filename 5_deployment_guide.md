@@ -451,8 +451,11 @@ Use this endpoint for uptime monitoring (e.g. UptimeRobot, Better Uptime).
 The privacy policy and account deletion pages are hosted as static HTML on Cloudflare Workers.
 
 **Source files:** `triptoe-docs/site/`
+- `index.html` → `https://triptoe.app` (landing page)
 - `privacy.html` → `https://triptoe.app/privacy`
 - `delete-account.html` → `https://triptoe.app/delete-account`
+
+**Assets:** `triptoe-long.png` (logo), `screenshot-map.png` (hero image), `favicon.png`
 
 **Worker name:** `restless-flower-1f1a` (on `wariyak.workers.dev`)
 **Custom domain:** `triptoe.app`

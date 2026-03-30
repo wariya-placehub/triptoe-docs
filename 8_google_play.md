@@ -109,9 +109,9 @@ Answers to expect:
 
 Google Play reviewers need credentials to test the app. A test bypass is hardcoded in the backend:
 
-- **Email:** `support@triptoe.com`
+- **Email:** `support@triptoe.app`
 - **Code:** `654321`
-- **Instructions:** Tap "I'm a Guest", enter any name and email `support@triptoe.com`. On the verification code screen, enter `654321`.
+- **Instructions:** Tap "I'm a Guest", enter any name and email `support@triptoe.app`. On the verification code screen, enter `654321`.
 
 This bypass is in `auth.py` — it skips sending a real verification email and accepts the fixed code for this email only. The bypass applies to all 4 guest auth endpoints: `guest_signup`, `guest_signup_verify`, `guest_request_code`, `guest_verify_code`.
 

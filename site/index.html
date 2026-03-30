@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TripToe — Connect Guides and Guests</title>
+  <meta name="description" content="One app for tour guides and guests. Live updates, check-ins, messaging, and more.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <script type="module" src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
+  <script nomodule src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #333; line-height: 1.6; }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(180deg, #ffffff 0%, #f4f9fc 100%);
+      text-align: center;
+      padding: 100px 24px 100px;
+      border-bottom: 1px solid #e8f0f7;
+    }
+    .hero-content { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 60px; text-align: left; }
+    @media (max-width: 800px) {
+      .hero-content { flex-direction: column; text-align: center; gap: 40px; }
+    }
+    .hero-text { flex: 1; }
+    .hero img.logo { height: 140px; margin-bottom: 24px; }
+    .hero h1 { font-size: 42px; line-height: 1.1; font-weight: 800; color: #1A4B7D; margin-bottom: 16px; }
+    .hero p { font-size: 20px; color: #555; margin-bottom: 36px; }
+    
+    /* Phone Mockup */
+    .phone-mockup {
+      flex: 0 0 320px;
+      width: 320px;
+    }
+    .phone-mockup img {
+      width: 100%;
+      display: block;
+      border-radius: 16px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+
+    .hero .cta {
+      display: inline-block;
+      background: #1A4B7D;
+      color: white;
+      font-size: 18px;
+      font-weight: 600;
+      padding: 16px 36px;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.2s;
+      box-shadow: 0 4px 12px rgba(26, 75, 125, 0.2);
+    }
+    .hero .cta:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(26, 75, 125, 0.3); }
+
+    /* Features */
+    .features {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 80px 24px;
+    }
+    .features h2 {
+      text-align: center;
+      font-size: 32px;
+      color: #1A4B7D;
+      margin-bottom: 50px;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 32px;
+    }
+    @media (max-width: 900px) {
+      .feature-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .feature-grid { grid-template-columns: 1fr; }
+    }
+    .feature-card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 32px;
+      border: 1px solid #eef2f5;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .feature-card:hover { transform: translateY(-4px); box-shadow: 0 10px 24px rgba(0,0,0,0.06); }
+    .feature-icon { font-size: 32px; margin-bottom: 16px; }
+    .feature-card h3 {
+      font-size: 19px;
+      color: #1A4B7D;
+      margin-bottom: 10px;
+    }
+    .feature-card p { font-size: 15px; color: #666; }
+
+    /* How it works */
+    .how-it-works {
+      background: #f8fafb;
+      padding: 60px 24px;
+      border-top: 1px solid #e8f0f7;
+      border-bottom: 1px solid #e8f0f7;
+    }
+    .how-it-works .inner { max-width: 900px; margin: 0 auto; }
+    .how-it-works h2 {
+      text-align: center;
+      font-size: 28px;
+      color: #1A4B7D;
+      margin-bottom: 40px;
+    }
+    .roles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+    }
+    @media (max-width: 600px) {
+      .roles { grid-template-columns: 1fr; }
+    }
+    .role h3 {
+      font-size: 20px;
+      color: #1A4B7D;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #82c4da;
+    }
+    .role ul {
+      list-style: none;
+      padding: 0;
+    }
+    .role li {
+      font-size: 15px;
+      color: #444;
+      padding: 6px 0;
+      padding-left: 20px;
+      position: relative;
+    }
+    .role li::before {
+      content: "\2713";
+      position: absolute;
+      left: 0;
+      color: #4CAF50;
+      font-weight: bold;
+    }
+
+    /* CTA bottom */
+    .cta-bottom {
+      text-align: center;
+      padding: 60px 24px;
+    }
+    .cta-bottom h2 {
+      font-size: 28px;
+      color: #1A4B7D;
+      margin-bottom: 12px;
+    }
+    .cta-bottom p {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 28px;
+    }
+    .cta-bottom .cta {
+      display: inline-block;
+      background: #FF5722;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      padding: 14px 32px;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: transform 0.2s;
+    }
+    .cta-bottom .cta:hover { transform: scale(1.05); }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 30px 24px;
+      border-top: 1px solid #e8f0f7;
+      color: #999;
+      font-size: 13px;
+    }
+    footer a { color: #82c4da; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-text">
+        <img src="triptoe-long.png" alt="TripToe" class="logo">
+        <h1>Never Lose a Guest Again</h1>
+        <p>The frictionless platform for tour guides and guests. From QR scan to live tracking in under 60 seconds.</p>
+        <a class="cta" href="https://play.google.com/store/apps/details?id=com.triptoe.mobile">Get it on Google Play</a>
+      </div>
+      <div class="phone-mockup">
+        <img src="screenshot-map.png" alt="TripToe session details">
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <h2>Why TripToe?</h2>
+    <div class="feature-grid">
+      <!-- Column 1: Frictionless Setup (Ocean Blue) -->
+      <div class="feature-card">
+        <div class="feature-icon" style="color: #82c4da"><ion-icon name="qr-code-outline"></ion-icon></div>
+        <h3>Zero Friction</h3>
+        <p>Guests join your tour in under 60 seconds. No passwords, no complicated forms—just scan and go.</p>
+      </div>
+      <!-- Column 2: Live Experience (Pin Orange) -->
+      <div class="feature-card">
+        <div class="feature-icon" style="color: #FF5722"><ion-icon name="location-outline"></ion-icon></div>
+        <h3>Real-Time Safety</h3>
+        <p>See your entire group on one live map. Know instantly if a guest falls behind or takes a wrong turn.</p>
+      </div>
+      <!-- Column 3: Post-Tour & Value (Action Green) -->
+      <div class="feature-card">
+        <div class="feature-icon" style="color: #4CAF50"><ion-icon name="bookmark-outline"></ion-icon></div>
+        <h3>Guide's Picks</h3>
+        <p>The tour ends, but the discovery continues. Share your favorite local spots for food, drinks, and hidden gems.</p>
+      </div>
+
+      <!-- Row 2, Column 1: Frictionless Setup (Ocean Blue) -->
+      <div class="feature-card">
+        <div class="feature-icon" style="color: #82c4da"><ion-icon name="chatbubbles-outline"></ion-icon></div>
+        <h3>Smart Messaging</h3>
+        <p>Broadcast updates to the whole group or message individuals. Use presets for stops, breaks, and delays.</p>
+      </div>
+      <!-- Row 2, Column 2: Live Experience (Pin Orange) -->
+      <div class="feature-card">
+        <div class="feature-icon" style="color: #FF5722"><ion-icon name="people-outline"></ion-icon></div>
+        <h3>Guest Check-In</h3>
+        <p>See who's arrived and who's still on the way. Manage your group with real-time check-in tracking.</p>
+      </div>
+      <!-- Row 2, Column 3: Post-Tour & Value (Action Green) -->
+      <div class="feature-card">
+        <div class="feature-icon" style="color: #4CAF50"><ion-icon name="cash-outline"></ion-icon></div>
+        <h3>Easy Tipping</h3>
+        <p>Accept digital tips seamlessly. Guests can tip via Venmo, PayPal, or Cash App with a single tap.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-it-works">
+    <div class="inner">
+      <h2>How It Works</h2>
+      <div class="roles">
+        <div class="role">
+          <h3>For Tour Guides</h3>
+          <ul>
+            <li>Create tours with meeting points and photos</li>
+            <li>Schedule sessions and generate check-in QR codes</li>
+            <li>Track every guest's location on a live map</li>
+            <li>Broadcast messages or chat with individuals</li>
+            <li>Share group photos and local recommendations</li>
+            <li>Collect verified reviews and digital tips</li>
+          </ul>
+        </div>
+        <div class="role">
+          <h3>For Guests</h3>
+          <ul>
+            <li>Join instantly by scanning the guide's QR code</li>
+            <li>See your guide's location so you never lose the group</li>
+            <li>Get real-time alerts about next stops and changes</li>
+            <li>Access meeting point details and navigation</li>
+            <li>Browse your guide's hand-picked local favorites</li>
+            <li>Leave a review and tip your guide in one tap</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-bottom">
+    <h2>Ready to transform your tours?</h2>
+    <p>TripToe is free to download for guides and guests.</p>
+    <a class="cta" href="https://play.google.com/store/apps/details?id=com.triptoe.mobile">Download TripToe</a>
+  </section>
+
+  <footer>
+    <p>&copy; 2026 TripToe &middot; <a href="privacy.html">Privacy Policy</a> &middot; <a href="mailto:support@triptoe.app">Contact</a></p>
+  </footer>
+
+</body>
+</html>
