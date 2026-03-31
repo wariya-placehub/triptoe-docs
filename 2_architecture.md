@@ -87,6 +87,7 @@ graph TB
 | `PhotoModal` | Full-screen photo viewer with close button overlay |
 | `CheckInBadge` | Filled green "Checked In" badge. Wraps `StatusBadge` with `variant="filled"`. |
 | `InfoLine` | Icon + text line for metadata display. `type` prop: `location` (pin icon), `time` (clock icon), `tag` (tag icon). Supports optional `children` (e.g., "Map" link). |
+| `ActionLink` | Small icon + text link button for card actions (Edit, Share, etc.). Props: `icon`, `label`, `onPress`, optional `color`. |
 
 #### Tour Components (`src/components/tour/`)
 
@@ -98,7 +99,7 @@ Shared domain components used by both guide and guest screens.
 | `TourSessionStatusBadge` | Maps `TourSessionStatus` to label + color, renders outline `StatusBadge`. Colors: Upcoming (ocean blue), Today (tour blue), Check-in Open (amber), In Progress (green), Completed (teal). |
 | `TourTemplateForm` | Shared form for Create Tour and Edit Tour screens. Manages image state internally (cover image + meeting place photo) and reports changes via `ImageChanges` in `onSubmit`. Includes map picker, meeting place details, and optional `onDelete` prop. |
 | `MapPickerModal` | Full-screen map modal for setting meeting point. Features: pin drop, drag to adjust, reverse geocoding to suggest address, forward geocoding from `initialQuery` (meeting place text). Uses `DEV_FALLBACK_REGION` from constants as last resort. |
-| `QRModal` | Full-screen QR code modal for a tour session (reused across screens) |
+| `QRModal` | QR code modal for both session QR and template QR. Dark theme (tourBlue background) for session, light theme (white background) for template. Shared across guide screens. |
 | `DateStrip` | Horizontal scrollable date pills for the schedule tab. Auto-scrolls to active date, highlights today. |
 | `GuidePicksList` | Grouped list of guide's local recommendations by category (eat, drink, see, shop, do). Shared between guide management and guest post-tour view. Accepts optional `onEdit`/`onDelete` props for guide editing mode. |
 | `GuideProfileModal` | Bottom-sheet modal showing guide bio, languages, specialties. Used on guest Tour Details screen. |
@@ -110,7 +111,7 @@ Guide-specific components, not used by guest screens.
 
 | Component | Purpose |
 |---|---|
-| `GuideTourTemplateCard` | Tour template card on My Tours dashboard. Shows title, duration, meeting place, next session date, cover image thumbnail, and edit link. |
+| `GuideTourTemplateCard` | Tour template card on My Tours dashboard. Shows title, duration, meeting place, next session date, cover image thumbnail, Edit and Share (template QR) action links. |
 | `GuideTourSessionCard` | Session card used on Tour Sessions and Schedule screens. `titleMode` prop controls bold top line: `'date'` or `'tour'`. Shows time range with "Edit" link, status badge, booking/check-in counts, QR button. |
 | `GuidePickModal` | Bottom-sheet modal for adding/editing a Guide's Pick (place name, category, note, map link). |
 | `GuestsTab` | Guest list tab for Session Details (completed tour) |
@@ -125,6 +126,7 @@ Guest-specific components, not used by guide screens.
 | Component | Purpose |
 |---|---|
 | `GuestTourBookingCard` | Booking card on guest My Tours dashboard. Shows tour info with `InfoLine` icons, `TourSessionStatusBadge`, `CheckInBadge`, cover image. Day-of nudge: when tour starts within 60 minutes, shows meeting place photo and "To Meeting Point" navigation button. Accepts `now` prop for local timer-based re-evaluation. |
+| `GuestUpcomingSessionCard` | Session card on the Select Session screen (after scanning template QR). Shows date, time range, booking count, and Join button. |
 
 #### Color Theme (TripToe Design System)
 
@@ -160,7 +162,7 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 | `useHeaderBackButton.ts` | Adds a back arrow to the header. Uses `router.replace()` by default (for hidden tab screens) or `router.navigate()` via `method` param (for tab screens like Schedule, to trigger `useFocusEffect`) |
 | `useTourSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) |
 | `useTourStatus.ts` | Calculates and periodically updates the tour status (heartbeat) |
-| `useQRModal.ts` | Manages QR modal state: open/close, fetch QR code, store title/date for display |
+| `useQRModal.ts` | Manages QR modal state: open/close, fetch QR code, store title/date for display. Supports both session QR (`handleShowQR`) and template QR (`handleShowTemplateQR`). |
 | `useGuideTourSessions.ts` | Fetches tour sessions (upcoming + optionally past) across all templates via single API call. Used by Schedule screen. |
 | `useTourSessionStatus.ts` | Calculates and periodically updates the tour session status (heartbeat) |
 
@@ -698,8 +700,8 @@ device_token
 | Prefix | Purpose |
 |---|---|
 | `/api/v1/auth` | Signup, signin, token refresh |
-| `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/sessions` (all sessions for a template), ratings aggregation |
-| `/api/v1/tour-sessions` | Tour session CRUD (single + batch create), `DELETE /tour-sessions/batch` (this_and_following / all), QR generation, guest locations, message history |
+| `/api/v1/tours` | Tour template CRUD, `GET /tours/<id>/sessions` (all sessions for a template), ratings aggregation, template QR generation (`GET /tour-templates/<id>/qr`), public upcoming sessions (`GET /tour-templates/<id>/upcoming-sessions`) |
+| `/api/v1/tour-sessions` | Tour session CRUD (single + batch create), `DELETE /tour-sessions/batch` (this_and_following / all), session QR generation, guest locations, message history |
 | `/api/v1/guides` | Guide-specific views: `GET /guides/upcoming-sessions` (all upcoming sessions with template data, single JOIN query) |
 | `/api/v1/bookings` | Guest bookings (by code or QR scan) |
 | `/api/v1/checkins` | Guest check-in, update location sharing preference |

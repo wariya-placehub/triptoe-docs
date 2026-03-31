@@ -92,10 +92,11 @@ createTourSession(sessionData)
 updateTourSession(tourSessionId, sessionData)
 deleteTourSession(tourSessionId)
 getTourSessionGuests(tourSessionId)
-getTourQRCode(tourSessionId)
+getTourQRCode(tourSessionId)           // Session QR (triptoe://tour-session/{id})
+getTourTemplateQRCode(tourTemplateId)  // Template QR (triptoe://tour-template/{id})
+getTemplateUpcomingSessions(tourTemplateId, from?, to?)
 
 // Bookings
-bookTourByQR(qrData)
 bookTourByCode(tourSessionId)
 cancelBooking(bookingId)
 getMyBookings()
