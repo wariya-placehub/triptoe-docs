@@ -68,6 +68,7 @@ graph TB
 | Date/time pickers | @react-native-community/datetimepicker |
 | Push notifications | expo-notifications |
 | QR scanning | expo-camera |
+| Deep linking | expo-linking (`useURL()` hook) |
 | Network images | expo-image (uses Coil on Android — does not cache failed loads unlike React Native's Fresco) |
 | Secure storage | expo-secure-store (for JWT tokens) |
 
@@ -602,8 +603,8 @@ Both guide and guest use the same mechanism: `expo-location` background location
 
 Both guide and guest maps display positions by **polling the backend** — no local position state:
 
-- **Guide map** polls `GET /tour-sessions/{session_id}/locations` which returns all guest locations + the guide's own location
-- **Guest map** polls `GET /tour-sessions/{session_id}/sync` which returns the guide's location + the guest's own location
+- **Guide map** polls `GET /tour-sessions/{tour_session_id}/locations` which returns all guest locations + the guide's own location
+- **Guest map** polls `GET /tour-sessions/{tour_session_id}/sync` which returns the guide's location + the guest's own location
 
 This means all map positions go through the same path: device → background task → backend → polling → map. No special handling for the phone owner's position.
 
@@ -626,7 +627,7 @@ sequenceDiagram
 
     Note over Guide: Guide polls for all positions
     loop Every 15 seconds
-        Guide->>API: GET /tour-sessions/{session_id}/locations
+        Guide->>API: GET /tour-sessions/{tour_session_id}/locations
         API->>DB: Query latest GuestLocation + GuideLocation
         API->>Guide: {guests: [...], guide_location: {...}}
         Guide->>Guide: Update map markers
@@ -634,7 +635,7 @@ sequenceDiagram
 
     Note over Guest: Guest polls for positions
     loop Every 25 seconds
-        Guest->>API: GET /tour-sessions/{session_id}/sync
+        Guest->>API: GET /tour-sessions/{tour_session_id}/sync
         API->>DB: Query latest GuideLocation + own GuestLocation
         API->>Guest: {guide_location: {...}, my_location: {...}}
         Guest->>Guest: Update map markers
@@ -649,6 +650,39 @@ sequenceDiagram
 - **Background access**: User must grant "Allow all the time" for background location
 - **No persistent storage**: Location data is not stored after the tour session ends
 - **Foreground service notification**: Persistent notification shown while tracking is active ("Sharing your location with your tour guide/guests")
+
+## QR Codes & Deep Linking
+
+### QR URL Format
+
+QR codes encode HTTPS URLs that work as both deep links (app installed) and web fallbacks (app not installed):
+
+| QR Type | URL Format | Example |
+|---------|-----------|---------|
+| Session QR | `https://triptoe.app/s/{tour_session_id}` | `https://triptoe.app/s/100025` |
+| Template QR | `https://triptoe.app/t/{tour_template_id}` | `https://triptoe.app/t/100000` |
+
+QR generation uses `ERROR_CORRECT_M` (15% recovery) to ensure reliable scanning in real-world conditions (bright sunlight, distance, phone screens).
+
+### Deep Link Flow
+
+**App installed:** Android App Links intercept the HTTPS URL → app opens → `useURL()` in root layout parses the URL via `parseQRData()` → navigates to booking or session picker.
+
+**App not installed:** URL opens in browser → Cloudflare Worker serves fallback page (`book-tour-session.html` or `select-tour-session.html`) → auto-redirect attempts `triptoe://` scheme after 1 second → shows "Download TripToe" button if app not installed.
+
+**Not authenticated:** Deep link URL stored in `useAuthStore.pendingDeepLink` → guest completes auth → root layout detects `pendingDeepLink` + `user` → navigates to correct screen.
+
+### Android App Links
+
+Verified via `/.well-known/assetlinks.json` on `triptoe.app`. Contains SHA-256 fingerprints for both the Google Play signing key and the upload keystore. `intentFilters` in `app.json` declare `/s/` and `/t/` path prefixes.
+
+### URL Formats
+
+`parseQRData()` in `tourUtils.ts` parses:
+- `https://triptoe.app/s/{tour_session_id}` — session QR
+- `https://triptoe.app/t/{tour_template_id}` — template QR
+
+The `triptoe://` custom scheme is used only in web fallback pages (`book-tour-session.html`, `select-tour-session.html`) for the "Open in App" button — it triggers the app from the browser when the HTTPS deep link didn't intercept.
 
 ## Push Notifications
 

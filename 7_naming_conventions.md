@@ -36,14 +36,14 @@ app/(guide)/
 
 app/(guest)/
   dashboard.tsx              # GuestDashboard
-  join-tour-session.tsx      # JoinTourSession
+  book-tour-session.tsx      # BookTourSession
   tour-booking-details.tsx   # TourBookingDetails
 ```
 
 Rules:
 - The component name must match the file name in PascalCase.
 - If a file is tour-related, the word "tour" must appear in the file name.
-- Expo Router uses the file name as the route segment. Customer-facing tab titles are set separately in `_layout.tsx` and can use friendlier names (e.g. "Join Tour" tab label for `join-tour-session.tsx`).
+- Expo Router uses the file name as the route segment. Customer-facing tab titles are set separately in `_layout.tsx` and can use friendlier names (e.g. "Join Tour" tab label for `book-tour-session.tsx`).
 
 ### Source files (`src/`)
 
@@ -92,8 +92,8 @@ createTourSession(sessionData)
 updateTourSession(tourSessionId, sessionData)
 deleteTourSession(tourSessionId)
 getTourSessionGuests(tourSessionId)
-getTourQRCode(tourSessionId)           // Session QR (triptoe://tour-session/{id})
-getTourTemplateQRCode(tourTemplateId)  // Template QR (triptoe://tour-template/{id})
+getTourQRCode(tourSessionId)           // Session QR (https://triptoe.app/s/{tour_session_id})
+getTourTemplateQRCode(tourTemplateId)  // Template QR (https://triptoe.app/t/{tour_template_id})
 getTemplateUpcomingSessions(tourTemplateId, from?, to?)
 
 // Bookings
@@ -194,7 +194,7 @@ Customer-facing UI text (button labels, tab titles, alerts, headings) can use si
 | Code Name | UI Label |
 |---|---|
 | `create-tour-template.tsx` | "Create Tour" |
-| `join-tour-session.tsx` | "Join Tour" |
+| `book-tour-session.tsx` | "Join Tour" |
 | `tour-booking-details.tsx` | "Tour Details" |
 | `tour-session-details.tsx` | "Session Details" |
 

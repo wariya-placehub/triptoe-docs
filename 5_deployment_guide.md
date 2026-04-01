@@ -448,12 +448,17 @@ Use this endpoint for uptime monitoring (e.g. UptimeRobot, Better Uptime).
 
 ## Static Site (Cloudflare Workers & Pages)
 
-The privacy policy and account deletion pages are hosted as static HTML on Cloudflare Workers.
+Static HTML, QR fallback pages, and Android App Links verification hosted on Cloudflare Workers.
 
 **Source files:** `triptoe-docs/site/`
 - `index.html` → `https://triptoe.app` (landing page)
 - `privacy.html` → `https://triptoe.app/privacy`
 - `delete-account.html` → `https://triptoe.app/delete-account`
+- `book-tour-session.html` → `https://triptoe.app/s/{tour_session_id}` (session QR fallback)
+- `select-tour-session.html` → `https://triptoe.app/t/{tour_template_id}` (template QR fallback)
+- `.well-known/assetlinks.json` → Android App Links verification
+
+**Routing:** `worker.js` routes `/s/*` and `/t/*` to fallback pages, serves `assetlinks.json` with `Content-Type: application/json`. All other requests served as static assets.
 
 **Assets:** `triptoe-long.png` (logo), `screenshot-map.png` (hero image), `favicon.png`
 

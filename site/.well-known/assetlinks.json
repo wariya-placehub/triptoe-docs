@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.triptoe.mobile",
+      "sha256_cert_fingerprints": [
+        "9A:03:80:2E:C4:6C:42:21:81:D7:E5:6C:E4:3E:99:E0:2B:1E:6F:C5:8D:63:CD:AA:8B:7A:21:D6:18:84:38:C8",
+        "58:05:82:40:B2:ED:BF:F2:8A:E8:0F:0A:94:0B:E4:69:6F:8E:D0:D6:65:80:BA:4F:80:79:26:CE:B2:07:6E:C1"
+      ]
+    }
+  }
+]
