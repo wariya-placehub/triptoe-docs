@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TripToe — Connect Guides and Guests</title>
-  <meta name="description" content="One app for tour guides and guests. Live updates, check-ins, messaging, and more.">
+  <title>TripToe — Never Lose a Guest Again</title>
+  <meta name="description" content="Real-time group tracking for tour guides. See your entire group live and get instant alerts when someone falls behind.">
   <link rel="icon" type="image/png" href="favicon.png">
   <script type="module" src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
   <script nomodule src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.js"></script>
@@ -27,17 +27,40 @@
     .hero img.logo { height: 140px; margin-bottom: 24px; }
     .hero h1 { font-size: 42px; line-height: 1.1; font-weight: 800; color: #1A4B7D; margin-bottom: 16px; }
     .hero p { font-size: 20px; color: #555; margin-bottom: 36px; }
-    
+
     /* Phone Mockup */
     .phone-mockup {
       flex: 0 0 320px;
       width: 320px;
+      position: relative;
     }
     .phone-mockup img {
       width: 100%;
       display: block;
       border-radius: 16px;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+    .phone-label {
+      position: absolute;
+      background: white;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #1A4B7D;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      white-space: nowrap;
+    }
+
+    /* Pain section */
+    .pain {
+      max-width: 700px;
+      margin: 0 auto;
+      text-align: center;
+      padding: 40px 24px 0;
+      font-size: 17px;
+      color: #666;
+      line-height: 1.7;
     }
 
     .hero .cta {
@@ -189,54 +212,55 @@
       <div class="hero-text">
         <img src="triptoe-long.png" alt="TripToe" class="logo">
         <h1>Never Lose a Guest Again</h1>
-        <p>The frictionless platform for tour guides and guests. From QR scan to live tracking in under 60 seconds.</p>
-        <a class="cta" href="https://play.google.com/store/apps/details?id=com.triptoe.mobile">Get it on Google Play</a>
+        <p>See your entire group live. Know instantly when someone falls behind.</p>
+        <p style="font-size: 14px; color: #888; margin-bottom: 32px; margin-top: -20px;">Up and running in under 60 seconds.</p>
+        <a class="cta" href="https://play.google.com/store/apps/details?id=com.triptoe.mobile">Start your first tour in 60 seconds</a>
       </div>
       <div class="phone-mockup">
-        <img src="screenshot-map.png" alt="TripToe session details">
+        <img src="screenshot-map.png" alt="TripToe live map showing guest locations">
+        <span class="phone-label" style="top: 32%; left: -30px;">Live guest locations</span>
+        <span class="phone-label" style="top: 16%; right: -20px;">Check-in status</span>
+        <span class="phone-label" style="bottom: 18%; left: -20px;">Instant messaging</span>
       </div>
     </div>
   </section>
 
+  <div class="pain">
+    Guides lose guests more often than they admit — missed turns, crowded streets, slow walkers. TripToe fixes that in real time.
+  </div>
+
   <section class="features">
-    <h2>Why TripToe?</h2>
+    <h2>Built for Tour Guides Who Need Real-Time Control</h2>
     <div class="feature-grid">
-      <!-- Column 1: Frictionless Setup (Ocean Blue) -->
       <div class="feature-card">
-        <div class="feature-icon" style="color: #82c4da"><ion-icon name="qr-code-outline"></ion-icon></div>
-        <h3>Zero Friction</h3>
-        <p>Guests join your tour in under 60 seconds. No passwords, no complicated forms—just scan and go.</p>
+        <div class="feature-icon" style="color: #FF5722"><ion-icon name="alert-circle-outline"></ion-icon></div>
+        <h3>Live Group Awareness</h3>
+        <p>See who's falling behind, who's missing, and where everyone is — at a glance. No more head counts.</p>
       </div>
-      <!-- Column 2: Live Experience (Pin Orange) -->
       <div class="feature-card">
         <div class="feature-icon" style="color: #FF5722"><ion-icon name="location-outline"></ion-icon></div>
-        <h3>Real-Time Safety</h3>
-        <p>See your entire group on one live map. Know instantly if a guest falls behind or takes a wrong turn.</p>
+        <h3>Live Group Map</h3>
+        <p>See every guest's location on one map in real time. Track check-ins, who's sharing location, and who's missing.</p>
       </div>
-      <!-- Column 3: Post-Tour & Value (Action Green) -->
       <div class="feature-card">
-        <div class="feature-icon" style="color: #4CAF50"><ion-icon name="bookmark-outline"></ion-icon></div>
-        <h3>Guide's Picks</h3>
-        <p>The tour ends, but the discovery continues. Share your favorite local spots for food, drinks, and hidden gems.</p>
+        <div class="feature-icon" style="color: #82c4da"><ion-icon name="qr-code-outline"></ion-icon></div>
+        <h3>60-Second Onboarding</h3>
+        <p>Guests scan a QR code and they're in. No passwords, no app store search, no complicated forms.</p>
       </div>
-
-      <!-- Row 2, Column 1: Frictionless Setup (Ocean Blue) -->
       <div class="feature-card">
         <div class="feature-icon" style="color: #82c4da"><ion-icon name="chatbubbles-outline"></ion-icon></div>
         <h3>Smart Messaging</h3>
-        <p>Broadcast updates to the whole group or message individuals. Use presets for stops, breaks, and delays.</p>
+        <p>Broadcast to the whole group or message individuals. Quick presets for stops, breaks, and delays.</p>
       </div>
-      <!-- Row 2, Column 2: Live Experience (Pin Orange) -->
       <div class="feature-card">
         <div class="feature-icon" style="color: #FF5722"><ion-icon name="people-outline"></ion-icon></div>
         <h3>Guest Check-In</h3>
-        <p>See who's arrived and who's still on the way. Manage your group with real-time check-in tracking.</p>
+        <p>See who's arrived and who's still on the way. Real-time check-in tracking with countdown to tour start.</p>
       </div>
-      <!-- Row 2, Column 3: Post-Tour & Value (Action Green) -->
       <div class="feature-card">
         <div class="feature-icon" style="color: #4CAF50"><ion-icon name="cash-outline"></ion-icon></div>
-        <h3>Easy Tipping</h3>
-        <p>Accept digital tips seamlessly. Guests can tip via Venmo, PayPal, or Cash App with a single tap.</p>
+        <h3>Tips &amp; Reviews</h3>
+        <p>Collect digital tips via Venmo, PayPal, or Cash App. Guests leave reviews and ratings after the tour.</p>
       </div>
     </div>
   </section>
@@ -246,25 +270,25 @@
       <h2>How It Works</h2>
       <div class="roles">
         <div class="role">
-          <h3>For Tour Guides</h3>
+          <h3>For You (The Guide)</h3>
           <ul>
             <li>Create tours with meeting points and photos</li>
-            <li>Schedule sessions and generate check-in QR codes</li>
-            <li>Track every guest's location on a live map</li>
-            <li>Broadcast messages or chat with individuals</li>
-            <li>Share group photos and local recommendations</li>
-            <li>Collect verified reviews and digital tips</li>
+            <li>Schedule sessions and share a QR code</li>
+            <li>Track every guest on a live map during the tour</li>
+            <li>Get alerts when someone falls behind</li>
+            <li>Message the group or individuals instantly</li>
+            <li>Collect reviews, tips, and share local recommendations</li>
           </ul>
         </div>
         <div class="role">
-          <h3>For Guests</h3>
+          <h3>For Your Guests</h3>
           <ul>
-            <li>Join instantly by scanning the guide's QR code</li>
-            <li>See your guide's location so you never lose the group</li>
-            <li>Get real-time alerts about next stops and changes</li>
+            <li>Scan the QR code to join in seconds</li>
+            <li>See the guide's location so they never lose the group</li>
+            <li>Get real-time messages about next stops and changes</li>
             <li>Access meeting point details and navigation</li>
-            <li>Browse your guide's hand-picked local favorites</li>
-            <li>Leave a review and tip your guide in one tap</li>
+            <li>Browse the guide's hand-picked local favorites</li>
+            <li>Leave a review and tip the guide in one tap</li>
           </ul>
         </div>
       </div>
@@ -272,9 +296,9 @@
   </section>
 
   <section class="cta-bottom">
-    <h2>Ready to transform your tours?</h2>
-    <p>TripToe is free to download for guides and guests.</p>
-    <a class="cta" href="https://play.google.com/store/apps/details?id=com.triptoe.mobile">Download TripToe</a>
+    <h2>Never lose a guest again — starting with your next tour</h2>
+    <p>Built specifically for walking tours and guided groups. Free for guides and guests.</p>
+    <a class="cta" href="https://play.google.com/store/apps/details?id=com.triptoe.mobile">Start Your First Tour</a>
   </section>
 
   <footer>

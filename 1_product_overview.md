@@ -29,7 +29,7 @@ TripToe provides two connected experiences:
 - **Create Tour Sessions** — Pick dates and times for specific occurrences of a template. Each session gets a unique QR code for guest check-in. Each template also has a persistent "Share Tour" QR code that lets guests browse and join upcoming sessions.
 - **Track guests in real-time** — See every guest's location on a live map during the tour session. Know immediately if someone falls behind or goes the wrong way.
 - **Send messages** — Push text messages to all guests or to individual guests within a session. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies.
-- **Audio broadcast** — Broadcast voice to all guests' phones during the tour session, replacing expensive radio equipment.
+- **Audio broadcast** (planned) — Broadcast voice to all guests' phones during the tour session, replacing expensive radio equipment.
 - **Post-tour engagement** — After the session ends, upload group photos for guests, view guest reviews and ratings, and collect tips via an external payment link (Venmo, PayPal, etc.).
 - **Guide's Picks** — Curate a persistent list of local recommendations (restaurants, bars, sights, shops, activities) that guests automatically see after a completed tour. Each pick has a name, category, optional personal note, and optional map link.
 
@@ -39,12 +39,12 @@ TripToe provides two connected experiences:
 - **Join via QR code** — Scan the guide's QR code to instantly join the tour session. No searching, no typing codes.
 - **Location sharing** — Opt-in to share location during the tour session so the guide can keep track of the group. Location sharing stops automatically when the session ends.
 - **Receive messages** — Get real-time messages from the guide on your phone. Never miss an instruction.
-- **Listen to audio** — Hear the guide's broadcast directly on your phone, even in noisy environments.
+- **Listen to audio** (planned) — Hear the guide's broadcast directly on your phone, even in noisy environments.
 - **Rate and review** — Leave a star rating and optional review after the tour session ends.
 - **View group photos** — Access group photos uploaded by the guide after the session.
 - **Tip the guide** — Tap a tip button that opens the guide's external payment link (Venmo, PayPal, etc.).
 - **Guide's Picks** — After a completed tour, browse the guide's curated local recommendations grouped by category (eat, drink, see, shop, do) with optional map links.
-- **Discover nearby tours** — Find tour sessions starting soon near your current location.
+- **Discover nearby tours** (planned) — Find tour sessions starting soon near your current location.
 
 ## Key User Journeys
 
@@ -149,7 +149,6 @@ Template Created  →  Session Created  →  Guests Check In  →  Tour Active  
                                                                     │
                                                               Location tracking
                                                               Messaging
-                                                              Audio broadcast
 ```
 
 - **Location tracking** is active only during the tour session window
@@ -181,9 +180,9 @@ Implemented in the existing codebase and will carry over.
 - Tour template creation and management (with cover image upload, server-side crop to square thumbnail)
 - Tour session creation with specific dates and times, including recurring sessions (daily, weekly, weekday, custom) with batch creation
 - Bulk session deletion (this session, this and following, all sessions)
-- QR code generation for guest check-in
+- QR code generation for guest check-in (per session and persistent per template)
 - Multiple check-ins per tour session (start, after free time, etc.)
-- Real-time guest location tracking on interactive map
+- Real-time guest and guide location tracking on interactive map with labeled markers
 - Broadcast and direct messaging to guests
 - Quick messages (reusable message presets)
 - Guide's Picks: curate local recommendations (eat, drink, see, shop, do) with optional notes and map links
@@ -193,10 +192,11 @@ Implemented in the existing codebase and will carry over.
 - Multi-operator support (guides working for multiple companies)
 
 **Guest Features:**
-- Quick signup (name + email) and QR code join
+- Quick signup (name + email, verification code) and QR code join
+- Session selection from template QR (browse and join upcoming sessions)
 - Check-in to tour sessions
-- Location sharing with automatic stop when tour ends
-- Receive messages from guide
+- Location sharing (background) with automatic stop when tour ends
+- Receive push notifications and in-app messages from guide
 - Booking management
 - Post-tour: star rating and review, view group photos, tip guide via external link, browse guide's local recommendations
 
@@ -205,6 +205,7 @@ Implemented in the existing codebase and will carry over.
 Not yet implemented — planned for later releases.
 
 **Guide Features:**
+- Straggler alerts — automatic push notification to the guide when a guest falls behind a configurable distance threshold. Backend already has straggler detection (`check_stragglers` in `location.py`); needs to be wired to push notifications or in-app alerts during active sessions.
 - Audio broadcasting to guest phones
 - Tour analytics and reporting
 - Social media sharing
@@ -212,22 +213,12 @@ Not yet implemented — planned for later releases.
 **Guest Features:**
 - Nearby tour discovery (find tours starting soon within a given distance)
 - Listen to guide's audio broadcast
-- Push notifications (messages delivered when app is in background)
 
 **Platform:**
 - Multi-language support
 - Offline mode for areas with poor connectivity
 
 **Misc:**
-- Add picture and details to meeting place
-- Add a tab for happening now tour
-- Permission request during installation
-- Guest profile page (rename profile to account)
-- Allow messages before the tour starts
-- Guest check out
-- Route for places to stop 
-- Test (camera to take profile picture, tour picture, push notification)
-- Guide tour template deletion
-- See message modal with gray background, other modal should do that too.
-- Refactor schedule page
-- Review use of tourBlue in guest screen
+- Route planning for tour stops (waypoints on map)
+- Guest check-out (explicit end of tour for individual guests)
+- iOS support
