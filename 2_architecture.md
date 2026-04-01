@@ -82,7 +82,7 @@ graph TB
 | `EmptyState` | Placeholder for empty lists |
 | `TimezonePicker` | Full-screen modal with searchable IANA timezone list |
 | `StatusBadge` | Generic pill badge with `label`, `color`, and `variant` (outline or filled) props. No domain knowledge — used as base for `TourSessionStatusBadge` and `CheckInBadge`. |
-| `TabBar` | Segmented pill-style tab bar (used for session grouping: This Week / Upcoming / Past) |
+| `TabBar` | Segmented pill-style tab bar (used for session grouping: Today / Upcoming / Completed) |
 | `StarRating` | Interactive or read-only star rating (1–5) using Ionicons |
 | `PhotoModal` | Full-screen photo viewer with close button overlay |
 | `CheckInBadge` | Filled green "Checked In" badge. Wraps `StatusBadge` with `variant="filled"`. |
@@ -146,7 +146,7 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 
 | Utility | Purpose |
 |---|---|
-| `tourUtils.ts` | `TourSessionStatus` type; `getTourSessionStatus()` — computes session status; `getCheckinEligibility()` — determines check-in button state and message; `canDeleteSession()` — checks booking count and status; `getThisWeekBounds()` — single source of truth for "This Week" tab window (today + 6 days) |
+| `tourUtils.ts` | `TourSessionStatus` type; `getTourSessionStatus()` — computes session status; `getCheckinEligibility()` — determines check-in button state and message; `canDeleteSession()` — checks booking count and status; `parseQRData()` — parses QR deep link into session or template ID |
 | `formatDate.ts` | `formatDate()`, `formatTime()`, `formatDateTime()`, `formatTimeRange()`, `formatDateGroupLabel()`, `formatDateWithYear()`, `formatTimeCompact()` — all display times in the tour template's timezone |
 | `recurrence.ts` | `generateRecurringSessions()` — generates batch session arrays from recurrence config (daily/weekly/weekday/custom); `wallClockToUTC()` / `pickerDateToUTCISO()` — timezone-safe conversion of picker values to UTC |
 | `apiError.ts` | `getApiError()` — extracts `error.response?.data?.error` with fallback |
@@ -160,7 +160,7 @@ Each color has 50–900 shades defined in `tailwind.config.js`.
 | Hook | Purpose |
 |---|---|
 | `useHeaderBackButton.ts` | Adds a back arrow to the header. Uses `router.replace()` by default (for hidden tab screens) or `router.navigate()` via `method` param (for tab screens like Schedule, to trigger `useFocusEffect`) |
-| `useTourSessionTabs.ts` | Groups sessions/bookings into This Week / Upcoming / Past tabs with smart sorting (ascending for future, descending for past) |
+| `useTourSessionTabs.ts` | Groups sessions/bookings into Today / Upcoming / Completed tabs with smart sorting (ascending for future, descending for completed). Auto-selects first non-empty tab, resets when items change. |
 | `useTourStatus.ts` | Calculates and periodically updates the tour status (heartbeat) |
 | `useQRModal.ts` | Manages QR modal state: open/close, fetch QR code, store title/date for display. Supports both session QR (`handleShowQR`) and template QR (`handleShowTemplateQR`). |
 | `useGuideTourSessions.ts` | Fetches tour sessions (upcoming + optionally past) across all templates via single API call. Used by Schedule screen. |
@@ -243,11 +243,11 @@ Both the guide's tour sessions and the guest's My Tours dashboard group sessions
 
 | Tab | Contents | Sort |
 |---|---|---|
-| **This Week** | Sessions starting today through the next 6 days (7-day window) | Ascending (soonest first) |
-| **Upcoming** | Sessions starting after this week | Ascending (soonest first) |
-| **Past** | Sessions starting before today | Descending (most recent first) |
+| **Today** | Sessions starting today (timezone-aware date comparison) | Ascending (soonest first) |
+| **Upcoming** | Sessions starting after today | Ascending (soonest first) |
+| **Completed** | Sessions whose end_datetime has passed | Descending (most recent first) |
 
-Bucketing is based on `start_datetime`, not tour status. A completed session that started today stays in "This Week" until the day ends. The default tab is the first non-empty one (This Week → Upcoming → Past). Both guide and guest use the same client-side grouping via the `useTourSessionTabs` hook, with `getThisWeekBounds()` from `tourUtils.ts` as the single source of truth for the 7-day window.
+Bucketing uses `end_datetime` for completed (past end = completed) and timezone-aware date comparison for today. The default tab is the first non-empty one (Today → Upcoming → Completed). Auto-select resets when the session list changes (e.g., navigating to a different tour). Both guide and guest use the same client-side grouping via the `useTourSessionTabs` hook.
 
 #### Guide Dashboard Sorting
 

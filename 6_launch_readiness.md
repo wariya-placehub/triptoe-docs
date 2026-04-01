@@ -34,7 +34,7 @@ Checklist of remaining work before production launch.
 ## Features
 - [x] Guide: edit tour template details (edit-tour screen)
 - [x] Guide: edit tour session (edit button on session-details screen)
-- [x] Guide/Guest: session grouping tabs (This Week / Upcoming / Past)
+- [x] Guide/Guest: session grouping tabs (Today / Upcoming / Completed)
 - [x] Guide: dashboard sorted by nearest upcoming session
 - [x] Guest: location sharing is opt-in (not auto-started on check-in)
 - [x] Guest: location sharing state persists across app reloads
