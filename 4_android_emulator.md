@@ -1,8 +1,8 @@
-# Android Emulator Setup
+# Android Development & Testing
 
 Audience: Developer
 
-Step-by-step guide to running TripToe on Android emulators for local development. This setup does not require Android Studio.
+Guide to running TripToe on Android emulators and physical devices. This setup does not require Android Studio.
 
 ## Key Terms
 
@@ -290,6 +290,100 @@ When you install a new package that contains native code (like `expo-image-picke
    npx expo start -c
    ```
 6. **Open the App**: Tap the TripToe icon on the emulators.
+
+## 9. Physical Device Testing
+
+For features that don't work reliably on emulators (background location tracking, push notifications, real GPS), test on a physical Android phone connected via USB.
+
+### Setup
+
+1. On the phone: **Settings → Developer options → USB debugging → ON**
+   - If "Developer options" is hidden: **Settings → About phone → tap "Build number" 7 times**
+2. Connect the phone via USB cable
+3. Verify the connection:
+   ```powershell
+   adb devices
+   ```
+   You should see your device (e.g., `R5CRA1XXXXX device`). If it shows `unauthorized`, check the phone for a permission prompt and tap "Allow".
+
+### Building and Installing
+
+Use the project's `build.bat` script:
+
+```powershell
+cd C:\dev\triptoe\triptoe-mobile
+
+# Build release APK and install via USB (default)
+.\build.bat
+
+# Build with specific options
+.\build.bat --apk              # Release APK + install via USB (default)
+.\build.bat --aab              # Release AAB for Google Play
+.\build.bat --clean            # Run prebuild first (required after app.json or native package changes)
+.\build.bat --apk --clean      # Rebuild native layer + APK + install
+```
+
+The release build uses `.env.production` (hits Railway), not `.env` (localhost). The app is self-contained — no Metro server needed.
+
+### Taking Screenshots
+
+```powershell
+.\snapshot.bat                 # Saves to snapshot.png
+.\snapshot.bat my_shot         # Saves to my_shot.png
+```
+
+### Viewing JS Logs
+
+React Native console output (including background task logs) is visible via `adb logcat`:
+
+```powershell
+adb logcat -s ReactNativeJS
+```
+
+This filters to only React Native JS logs. Useful for:
+- `console.log` / `console.warn` / `console.error` from any JS code
+- Background task debugging (e.g., `[BG-LOC]` location tracking logs)
+- Crash stack traces from the global error handler
+
+Keep the terminal open — logs stream in real time. Press `Ctrl+C` to stop.
+
+### When to Use Physical Device vs Emulator
+
+| Feature | Emulator | Physical Device |
+|---|---|---|
+| UI development / hot reload | ✅ Best (Metro + fast iteration) | ❌ No hot reload (release build) |
+| Background location tracking | ⚠️ Unreliable (GPS simulation is flaky) | ✅ Required |
+| Push notifications | ⚠️ Requires Google Play Services setup | ✅ Works out of the box |
+| Real GPS / walking tours | ❌ Simulated only | ✅ Required |
+| Camera / QR scanning | ⚠️ Limited (no real camera) | ✅ Required |
+| Performance profiling | ⚠️ Not representative | ✅ Accurate |
+| Multi-device testing (guide + guest) | ✅ Two emulators on one machine | ✅ Two phones, or phone + emulator |
+
+### Debugging Background Location on a Physical Device
+
+Background location is the most common feature to debug on a physical device. The typical workflow:
+
+1. Build and install: `.\build.bat`
+2. Open the app, sign in as guide, navigate to an active session
+3. Watch the background task in real time:
+   ```powershell
+   adb logcat -s ReactNativeJS
+   ```
+4. Look for `[BG-LOC]` lines:
+   - `*** TASK INVOKED ***` → native layer is calling the JS task
+   - `Sending: guide session=100066 → https://...` → request being made
+   - `Response: 200` → backend accepted the update
+   - `Response: 410` → session has ended (stale session ID)
+   - `No persisted session, skipping` → SecureStore has no active session
+   - `No token found, skipping` → access token is missing
+5. Verify data reaches the database:
+   ```sql
+   SELECT recorded_at, latitude, longitude
+   FROM guide.guide_location
+   WHERE tour_session_id = <id>
+   ORDER BY recorded_at DESC
+   LIMIT 10;
+   ```
 
 ## Troubleshooting
 

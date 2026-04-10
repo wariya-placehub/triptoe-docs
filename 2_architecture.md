@@ -68,7 +68,7 @@ graph TB
 | Date/time pickers | @react-native-community/datetimepicker |
 | Push notifications | expo-notifications |
 | QR scanning | expo-camera |
-| Deep linking | expo-linking (`useURL()` hook) |
+| Deep linking | Expo Router file-based routes (`app/s/[id].tsx`, `app/t/[id].tsx`) |
 | Network images | expo-image (uses Coil on Android — does not cache failed loads unlike React Native's Fresco) |
 | Secure storage | expo-secure-store (for JWT tokens) |
 
@@ -106,13 +106,9 @@ The guest's "Guide's Picks" tab only appears if the guide has picks. Default tab
 
 #### Timezone Strategy
 
-Three distinct timezones exist in the system: guide device, guest device, and tour template. The rules are:
+Three distinct timezones interact: guide device, guest device, and tour template. All tour times display in the **tour template's timezone**. All datetimes are stored in **UTC** in the database. Session creation uses **wall-clock projection** to correctly convert picker values into the tour's timezone. Recurring sessions project per-date to avoid DST drift.
 
-- **All tour times display in the tour template's timezone** — via `toLocaleString({ timeZone: tz })` on the frontend. The session creation screen shows a "Times shown in [timezone]" label so guides know which timezone they're setting.
-- **Status computation uses UTC math** — `getTourSessionStatus()` compares UTC timestamps (timezone-agnostic), except the "today" check which compares dates in the tour's timezone
-- **Session creation uses wall-clock projection** — the date/time pickers return numbers in the phone's local timezone. The frontend extracts those wall-clock values (hour, minute, day) and projects them into the tour template's timezone using `wallClockToUTC()` before sending UTC ISO strings to the backend. This ensures a guide in New York scheduling a tour for 9:00 AM London time sends the correct UTC instant, not 9:00 AM New York time. Recurring session generation uses the same projection per-date to avoid DST drift.
-- **API responses always include timezone offset** — the backend serializes datetimes via Python's `.isoformat()` on UTC-aware objects, producing strings like `2026-03-11T15:30:00+00:00`. JavaScript's `new Date()` parses these correctly as UTC.
-- **All datetimes stored in UTC** in the database (PostgreSQL `DateTime(timezone=True)`)
+For the full rules, DST handling, and common pitfalls, see **[9c_feature_timezone_strategy.md](9c_feature_timezone_strategy.md)**.
 
 #### Navigation
 
@@ -126,6 +122,12 @@ Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
 Non-tab screens are hidden from the tab bar with `href: null`:
 - **Guide**: `tour_sessions`, `tour_session_details`, `tour_session_messages`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `quick_messages`, `guide_picks`, `tip_links`, `edit_account`, `signin`
 - **Guest**: `tour_booking_details`, `join_tour_session`, `tour_session_messages`, `signin`, `signup`
+
+Auth screens (`signin`, `signup`) additionally hide the tab bar entirely via `tabBarStyle: { display: 'none' }`. This prevents unauthenticated users from tapping into protected screens.
+
+#### Returning User Auto-Skip
+
+The welcome screen (role selection) is shown only on first launch. For returning users, the app persists `lastUserType` in `SecureStore` across logout and auto-redirects to the appropriate signin screen on cold start. Users can still switch roles via "Sign in as Guest" / "Sign in as Guide" buttons on the signin screens, which navigate back to the welcome screen.
 
 #### Edit Navigation
 
@@ -186,403 +188,52 @@ The data model follows a **template-session pattern**: guides create reusable **
 
 Tables are organized into five PostgreSQL schemas:
 
-| Schema | Purpose | Tables |
+| Schema | Purpose | Key tables |
 |---|---|---|
 | `guide` | Guide and operator data | guide, guide_pick, guide_location, operator, guide_operator_role |
 | `guest` | Guest accounts and location | guest, guest_location, verification_code |
 | `tour` | Tours, sessions, bookings | tour_template, tour_session, tour_booking, tour_checkin, tour_review, tour_session_photo, archived_booking |
-| `message` | Messaging system | message, message_read_receipt, messaging_consent, quick_message, blocked_communication |
+| `message` | Messaging system | message, message_read_receipt, quick_message |
 | `shared` | Cross-cutting concerns | device_token |
 
-### Entity Relationship Diagram
+### Key Relationships
 
-```mermaid
-erDiagram
-    Operator ||--o{ TourTemplate : owns
-    Operator ||--o{ GuideOperatorRole : has
-    Guide ||--o{ GuideOperatorRole : has
-    Guide ||--o{ GuidePick : curates
-    Guide ||--o{ TourSession : leads
-    TourTemplate ||--o{ TourSession : "has"
-    TourSession ||--o{ TourBooking : has
-    TourSession ||--o{ TourCheckin : has
-    TourSession ||--o{ Message : contains
-    TourSession ||--o{ MessagingConsent : has
-    Guest ||--o{ TourBooking : makes
-    Guest ||--o{ TourCheckin : performs
-    Guest ||--o{ GuestLocation : reports
-    Guest ||--o{ MessagingConsent : grants
-    TourBooking ||--o{ TourCheckin : "linked to"
-    GuestLocation }o--|| TourSession : "during"
-    Message ||--o{ MessageReadReceipt : has
-    Guide ||--o{ QuickMessage : creates
-    TourBooking ||--o| TourReview : has
-    TourSession ||--o{ TourReview : has
-    TourSession ||--o{ TourSessionPhoto : has
+- `Operator` → `TourTemplate` → `TourSession` → `TourBooking` → `TourCheckin`
+- `Guide` ←→ `Operator` via `GuideOperatorRole` (many-to-many with role)
+- `Guest` → `TourBooking` → `TourCheckin` → `GuestLocation`
+- `TourSession` → `Message` → `MessageReadReceipt`
+- `TourBooking` → `TourReview` (one review per booking, enforced by unique constraint)
 
-    Guide {
-        string guide_uid PK
-        string email_address UK
-        string guide_name
-        string phone_number
-        string google_user_id
-        string tip_link
-        bool is_active
-    }
+### Notable Design Choices
 
-    Guest {
-        string guest_uid PK
-        string email_address UK
-        string guest_name
-        string phone_number
-        string account_status
-        bool email_verified
-        string device_id
-    }
+- **ID sequences start at 100000** for readability
+- **PostGIS POINT type** for meeting coordinates
+- **All datetimes stored in UTC** (`TIMESTAMPTZ`)
+- **Soft deletes** for messages (`is_deleted` flag)
+- **Archived bookings** — bookings are preserved when sessions are deleted
+- **Dependency-aware deletion** — templates can't be deleted with sessions; sessions can't be deleted with bookings
 
-    Operator {
-        int operator_id PK
-        string operator_name
-        string operator_type
-        string primary_email
-        bool is_active
-        bool is_verified
-        jsonb branding
-    }
-
-    GuideOperatorRole {
-        int id PK
-        string guide_uid FK
-        int operator_id FK
-        string role
-        bool is_primary
-    }
-
-    TourTemplate {
-        int tour_template_id PK
-        int operator_id FK
-        string tour_title
-        int duration_minutes
-        string meeting_place
-        point meeting_coordinates
-        string timezone
-        string cover_image_url
-    }
-
-    TourSession {
-        int tour_session_id PK
-        int tour_template_id FK
-        string guide_uid FK
-        datetime start_datetime
-        datetime end_datetime
-        bool allow_guest_messages
-        jsonb qr_code_data
-    }
-
-    TourBooking {
-        int tour_booking_id PK
-        int tour_session_id FK
-        string guest_uid FK
-        datetime booked_at
-    }
-
-    TourCheckin {
-        int tour_checkin_id PK
-        int tour_session_id FK
-        string guest_uid FK
-        int tour_booking_id FK
-        datetime checkin_time
-        bool location_sharing_enabled
-    }
-
-    GuestLocation {
-        int location_id PK
-        string guest_uid FK
-        int tour_session_id FK
-        float latitude
-        float longitude
-        float accuracy
-        datetime recorded_at
-    }
-
-    Message {
-        int message_id PK
-        int tour_session_id FK
-        string sender_uid
-        string sender_type
-        string recipient_uid
-        string message_type
-        text content
-        string status
-    }
-
-    MessagingConsent {
-        int consent_id PK
-        int tour_session_id FK
-        string guest_uid FK
-        bool receive_guide_messages
-        bool send_to_guide
-        bool share_phone_with_guide
-    }
-
-    MessageReadReceipt {
-        int receipt_id PK
-        int message_id FK
-        string reader_uid
-        string reader_type
-        datetime read_at
-    }
-
-    GuidePick {
-        int guide_pick_id PK
-        string guide_uid FK
-        string place_name
-        string category
-        text note
-        string map_link
-        int display_order
-        datetime created_at
-    }
-
-    QuickMessage {
-        int quick_message_id PK
-        string guide_uid FK
-        string quick_message_name
-        text content
-        datetime created_at
-    }
-
-    TourReview {
-        int tour_review_id PK
-        int tour_booking_id FK UK
-        int tour_session_id FK
-        string guest_uid FK
-        int rating
-        text review_text
-        datetime created_at
-    }
-
-    TourSessionPhoto {
-        int tour_session_photo_id PK
-        int tour_session_id FK
-        string photo_url
-        datetime uploaded_at
-    }
-```
-
-### Key Design Decisions
-
-- **ID sequences start at 100000** — TourTemplate, TourSession, TourBooking, TourCheckin, and GuestLocation IDs start at 100000 for readability
-- **PostgreSQL schemas** — Tables grouped by domain (guide, guest, tour, message, shared) for logical separation
-- **PostGIS POINT type** — Meeting point coordinates stored as native PostgreSQL POINT type via a custom `PGPoint` SQLAlchemy type
-- **JSONB for flexible data** — QR code data, user preferences, branding, and message metadata use JSONB columns
-- **Timezone-aware datetimes** — All timestamps stored in UTC with timezone awareness; tour templates store a `timezone` field so times display in the tour's local timezone
-- **Duplicate session prevention** — Backend returns 409 if a session with matching template + start + end already exists
-- **Soft deletes for messages** — Messages use `is_deleted` flag rather than hard deletes
-- **Archived bookings** — When a tour session is deleted, bookings are moved to an `ArchivedBooking` table rather than being lost
-- **Batch session operations** — Sessions can be created in bulk via recurrence (daily/weekly/weekday/custom, up to 52 occurrences) and deleted in bulk (single, this and following, or all for a template). Batch delete skips sessions with bookings/check-ins and reports skipped IDs to the client.
-- **Dependency-aware deletion** — Tour templates can only be deleted when they have no sessions; sessions can only be deleted when they have no bookings or check-ins, and cannot be deleted when in progress or completed. Session deletion must clean up all FK-dependent records: `TourCheckin`, `GuestLocation`, `GuideLocation`, `TourReview`, `TourSessionPhoto`, `TourBooking` (manual cleanup), plus `Message`, `MessagingConsent` (CASCADE), and `MessageAnalytics` (SET NULL)
-- **One review per booking** — `tour_booking_id` has a unique constraint on `tour_review`, enforced at the database level
-- **Image processing** — All uploaded images are server-side center-cropped and resized via a shared `_save_tour_image()` helper using Pillow. Cover images: 1:1 (400×400). Meeting place photos: 4:3 (800×600). Both converted to JPEG quality 85. The helper handles validation, old file cleanup, and directory creation.
-- **Model serialization** — `GuidePick.to_dict()` and `TourSessionPhoto.to_dict()` ensure consistent JSON output across all endpoints. `_build_guide_details()` helper in `tour_sessions.py` constructs guide response dicts (with conditional picks for completed sessions).
-- **Coordinate parsing** — `parse_coordinates()` in `app/utils/route_helpers.py` converts PostgreSQL POINT format to `{lat, lng}` dicts, shared across `tour_templates.py` and `tour_sessions.py`.
-- **External tip payments** — Tips use an external URL (Venmo, PayPal, etc.) stored as `tip_link` on the guide profile; no in-app payment processing
+The full ERD and column-level detail are in the SQLAlchemy models at `triptoe-backend/app/models/`.
 
 ## Authentication
 
-### Auth Strategy
+Guides authenticate via Google OAuth. Guests authenticate via email + 6-digit verification code (sent via Resend). Both flows issue JWTs (access + refresh) managed by flask-jwt-extended, with automatic token refresh via Axios interceptors.
 
-| User | First time | Returning |
-|---|---|---|
-| **Guide** | Google OAuth | Google OAuth |
-| **Guest** | Name + email + 6-digit verification code | Email + 6-digit verification code |
-
-- **Guides** authenticate exclusively via Google OAuth. No passwords to manage.
-- **Guests** sign up with name and email, then verify via a 6-digit code sent to their email (expires in 10 minutes). Returning guests sign in with just their email and a new verification code. Both flows are designed for minimal friction (under 60 seconds for walk-up tourists).
-
-### Guide Auth Flow (Google OAuth)
-
-```mermaid
-sequenceDiagram
-    participant App as Mobile App
-    participant API as Flask Backend
-    participant Google as Google OAuth
-    participant DB as PostgreSQL
-
-    Note over App, Google: Guide Signup / Sign In
-    App->>Google: Initiate OAuth (Google Sign-In)
-    Google->>App: Return OAuth ID token
-    App->>API: POST /auth/guide/signin {google_id_token}
-    API->>Google: Verify ID token
-    API->>DB: Find or create Guide by google_user_id
-    API->>App: {access_token, refresh_token, user}
-```
-
-### Guest Auth Flow
-
-```mermaid
-sequenceDiagram
-    participant App as Mobile App
-    participant API as Flask Backend
-    participant DB as PostgreSQL
-    participant Email as Email Service
-
-    Note over App, Email: Guest First-Time Signup
-    App->>API: POST /auth/guest/signup {name, email}
-    API->>API: Generate 6-digit code (expires in 10 min)
-    API->>DB: Store code hash + expiry
-    API->>Email: Send code to guest's email
-    App->>API: POST /auth/guest/signup/verify {email, name, code}
-    API->>DB: Verify code + create Guest record
-    API->>App: {access_token, refresh_token, user}
-
-    Note over App, Email: Returning Guest Sign In
-    App->>API: POST /auth/guest/request-code {email}
-    API->>DB: Lookup Guest by email
-    API->>API: Generate 6-digit code (expires in 10 min)
-    API->>DB: Store code hash + expiry
-    API->>Email: Send code to guest's email
-    App->>API: POST /auth/guest/verify-code {email, code}
-    API->>DB: Verify code hash + check expiry
-    API->>App: {access_token, refresh_token, user}
-```
-
-### Token Strategy
-
-| Token | Lifetime | Storage | Purpose |
-|---|---|---|---|
-| Access token | 1 hour | expo-secure-store | API request authentication |
-| Refresh token | 30 days | expo-secure-store | Obtain new access tokens |
-
-- Managed by **flask-jwt-extended**
-- Access tokens are JWTs containing `{uid, type, exp}`
-- Refresh tokens are opaque strings stored in the database
-- Axios interceptors automatically refresh expired access tokens
-
-### Token Refresh Flow
-
-```mermaid
-sequenceDiagram
-    participant App as Mobile App
-    participant API as Flask Backend
-
-    App->>API: POST /auth/refresh {refresh_token}
-    API->>API: Validate refresh token
-    API->>App: {access_token}
-```
+For auth flows, token strategy, session restoration, and account deletion details, see **[9a_feature_authentication.md](9a_feature_authentication.md)**.
 
 ## Location Tracking
 
-Both guide and guest use the same mechanism: `expo-location` background location updates via `TaskManager`. A shared `backgroundLocation.ts` service handles both user types — the only difference is which API endpoint receives the updates and when tracking starts.
+Both guide and guest use `expo-location` background location updates via a shared `backgroundLocation.ts` service. Guide tracking auto-starts from the root layout whenever an active session exists (via `useActiveTourStore`). Guest tracking requires explicit opt-in ("Start Sharing Location"). All map positions are displayed by polling the backend — no local position state.
 
-### How It Works
+For the full flow (auto-start, boot resume, background task details, map polling, privacy), see **[9d_feature_location_tracking.md](9d_feature_location_tracking.md)**.
 
-**Guest:**
-1. Guest checks into a tour session (check-in does **not** auto-start location sharing)
-2. Guest explicitly taps "Start Sharing Location" to opt in
-3. App requests foreground + background location permission
-4. `startBackgroundLocationUpdates(tourSessionId, 'guest')` begins sending to `POST /location/update`
-5. Guest taps "Stop Sharing" or the tour ends → tracking stops
+## QR Codes & Tour Joining
 
-**Guide:**
-1. Guide opens session details while the session is active (status: `check_in_open` or `in_progress`)
-2. App automatically requests foreground + background location permission
-3. `startBackgroundLocationUpdates(tourSessionId, 'guide')` begins sending to `POST /location/guide/update`
-4. Tracking stops when the guide leaves the screen or the session completes
+QR codes encode HTTPS URLs (`https://triptoe.app/s/{session_id}` for sessions, `/t/{template_id}` for templates) that work as both deep links (app installed) and web fallbacks (app not installed). The app handles them via Expo Router file-based routes (`app/s/[id].tsx` and `app/t/[id].tsx`) which manage auth-gating, booking, confirmation, and error handling.
 
-### Shared Background Location Service (`backgroundLocation.ts`)
+Android App Links are verified via `/.well-known/assetlinks.json` on `triptoe.app`.
 
-- Single `TaskManager` background task shared by both user types
-- `userType` parameter determines the API endpoint (`/location/update` for guests, `/location/guide/update` for guides)
-- Uses `fetch` (not Axios) because the task runs outside React
-- Reads JWT from `SecureStore` for authentication
-- Shows a persistent foreground service notification (required for Android 14+)
-- Configurable via constants: `LOCATION_UPDATE_INTERVAL_SECONDS`, `LOCATION_UPDATE_DISTANCE_METERS`
-
-### Map Display
-
-Both guide and guest maps display positions by **polling the backend** — no local position state:
-
-- **Guide map** polls `GET /tour-sessions/{tour_session_id}/locations` which returns all guest locations + the guide's own location
-- **Guest map** polls `GET /tour-sessions/{tour_session_id}/sync` which returns the guide's location + the guest's own location
-
-This means all map positions go through the same path: device → background task → backend → polling → map. No special handling for the phone owner's position.
-
-### Location Data Flow
-
-```mermaid
-sequenceDiagram
-    participant Guest as Guest App
-    participant Guide as Guide App
-    participant API as Flask API
-    participant DB as PostgreSQL
-
-    Note over Guest, Guide: Background location task (both roles)
-    loop Every 15 seconds
-        Guest->>API: POST /location/update {tour_session_id, lat, lng}
-        API->>DB: Insert GuestLocation row
-        Guide->>API: POST /location/guide/update {tour_session_id, lat, lng}
-        API->>DB: Insert GuideLocation row
-    end
-
-    Note over Guide: Guide polls for all positions
-    loop Every 15 seconds
-        Guide->>API: GET /tour-sessions/{tour_session_id}/locations
-        API->>DB: Query latest GuestLocation + GuideLocation
-        API->>Guide: {guests: [...], guide_location: {...}}
-        Guide->>Guide: Update map markers
-    end
-
-    Note over Guest: Guest polls for positions
-    loop Every 25 seconds
-        Guest->>API: GET /tour-sessions/{tour_session_id}/sync
-        API->>DB: Query latest GuideLocation + own GuestLocation
-        API->>Guest: {guide_location: {...}, my_location: {...}}
-        Guest->>Guest: Update map markers
-    end
-```
-
-### Privacy & Technical Requirements
-
-- **Guest consent**: Location is only collected when the guest has explicitly tapped "Start Sharing Location"
-- **Guide consent**: Location sharing starts automatically when the session is active, but requires location permission grant
-- **Android 14+**: Requires `FOREGROUND_SERVICE_LOCATION` permission and `foregroundServiceType="location"` in the Manifest
-- **Background access**: User must grant "Allow all the time" for background location
-- **No persistent storage**: Location data is not stored after the tour session ends
-- **Foreground service notification**: Persistent notification shown while tracking is active ("Sharing your location with your tour guide/guests")
-
-## QR Codes & Deep Linking
-
-### QR URL Format
-
-QR codes encode HTTPS URLs that work as both deep links (app installed) and web fallbacks (app not installed):
-
-| QR Type | URL Format | Example |
-|---------|-----------|---------|
-| Session QR | `https://triptoe.app/s/{tour_session_id}` | `https://triptoe.app/s/100025` |
-| Template QR | `https://triptoe.app/t/{tour_template_id}` | `https://triptoe.app/t/100000` |
-
-QR generation uses `ERROR_CORRECT_M` (15% recovery) to ensure reliable scanning in real-world conditions (bright sunlight, distance, phone screens).
-
-### Deep Link Flow
-
-**App installed:** Android App Links intercept the HTTPS URL → app opens → `useURL()` in root layout parses the URL via `parseQRData()` → navigates to booking or session picker.
-
-**App not installed:** URL opens in browser → Cloudflare Worker serves fallback page (`book-tour-session.html` or `select-tour-session.html`) → auto-redirect attempts `triptoe://` scheme after 1 second → shows "Download TripToe" button if app not installed.
-
-**Not authenticated:** Deep link URL stored in `useAuthStore.pendingDeepLink` → guest completes auth → root layout detects `pendingDeepLink` + `user` → navigates to correct screen.
-
-### Android App Links
-
-Verified via `/.well-known/assetlinks.json` on `triptoe.app`. Contains SHA-256 fingerprints for both the Google Play signing key and the upload keystore. `intentFilters` in `app.json` declare `/s/` and `/t/` path prefixes.
-
-### URL Formats
-
-`parseQRData()` in `tourUtils.ts` parses:
-- `https://triptoe.app/s/{tour_session_id}` — session QR
-- `https://triptoe.app/t/{tour_template_id}` — template QR
-
-The `triptoe://` custom scheme is used only in web fallback pages (`book-tour-session.html`, `select-tour-session.html`) for the "Open in App" button — it triggers the app from the browser when the HTTPS deep link didn't intercept.
+For the full end-to-end flow covering all auth states, edge cases, and the Cloudflare Worker fallback, see **[9b_feature_tour_joining_flow.md](9b_feature_tour_joining_flow.md)**.
 
 ## Push Notifications
 
