@@ -1,6 +1,6 @@
 # Location Tracking Follow-ups
 
-## Status: Open (Item 1 and Item 3 resolved 2026-04-10 evening / 2026-04-11 overnight)
+## Status: All three observed items (Items 1, 2, 3) resolved 2026-04-10 evening / 2026-04-11 overnight. One new observation added (mysterious counter reset).
 ## Priority: Mixed (see each item)
 ## Affects: Guide + Guest location sharing
 
@@ -32,15 +32,15 @@ Three new log lines for observability:
 
 **Commit:** triptoe-mobile `3071f04` "Add single-retry on TypeError from the location update fetch"
 
-### 2. Burst suppression race causing duplicate records — Low priority
+### 2. Burst suppression race causing duplicate records — ✅ Resolved 2026-04-11 overnight
 
-**Evidence:** Observed on 2026-04-10 post-layout-sync deployment. The guest task fired #1 Sent and #2 Sent 11ms apart on initial startup, because both callbacks passed the `_lastForwardedAt < BURST_SUPPRESSION_INTERNAL_WORKAROUND_MS` check before either updated the timestamp.
+**Evidence before:** Observed on 2026-04-10 post-layout-sync deployment. The guest task fired `[BG-LOC #1] Sent` and `[BG-LOC #2] Sent` 11ms apart on initial startup because both callbacks passed the `_lastForwardedAt < BURST_SUPPRESSION_INTERNAL_WORKAROUND_MS` check before either updated the timestamp.
 
-**Current behavior:** `_lastForwardedAt` is only set inside the `if (response.ok)` branch, *after* the fetch. Concurrent callbacks can race past the gate.
+**Resolution:** `_lastForwardedAt = now` is now assigned synchronously the instant after the check passes, before any `await`. Any concurrent callback that runs during the first fetch sees the updated timestamp and gets correctly suppressed at its own check. The earlier "only consume on success" logic was effectively a no-op because the task's time interval (15s) is already greater than the suppression window (10s), so failed sends don't block the next legitimate retry regardless.
 
-**Cost:** An extra duplicate location row in the DB per burst, with near-identical lat/lng. Zero user-visible impact. Wastes a tiny amount of DB storage and bandwidth.
+**Verified:** After the fix, no two `Sent` log lines appear within milliseconds of each other. Every successful send is cleanly separated by ~14-15 seconds.
 
-**Fix sketch:** Set `_lastForwardedAt = now` *before* the fetch, and reset it to the previous value on fetch failure (so failed sends don't poison the window). 2-line change.
+**Commit:** triptoe-mobile `2c3037e` "Claim burst-suppression window synchronously before any await"
 
 ### 3. Guest sync 60-second restart churn — ✅ Resolved 2026-04-10 evening
 
@@ -61,6 +61,32 @@ On a fresh process both timestamps are 0, so the check returns false after force
 **Result:** Both `syncGuideLocationTracking` and `syncGuestLocationTracking` now gate on `isLocationSharingActive`. Counter stays monotonic during normal operation on both roles. Verified on both phones with force-close + relaunch scenarios: task correctly restarts within 1 second of the fresh process starting.
 
 **Commit:** triptoe-mobile `8f683e8` "Add heartbeat liveness check to isLocationSharingActive"
+
+### NEW: Mysterious counter reset ~14-15 seconds after initial start — Low priority, needs investigation
+
+**Evidence:** Observed repeatedly on 2026-04-10 evening and 2026-04-11 overnight testing. Specifically on the guest process but may also affect the guide. The pattern:
+
+```
+00:08:35.070 [BG-LOC #1] Sent (guest session=100037)   ← first send after layout sync start
+00:08:49.542 [BG-LOC #1] Sent (guest session=100037)   ← counter reset to 1, 14.5s later
+00:09:03.736 [BG-LOC #2] Sent
+00:09:18.034 [BG-LOC #3] Sent
+... (monotonic from here)
+```
+
+The second `[BG-LOC #1]` means `_taskCallCount = 0` was re-executed — which only happens inside `startBackgroundLocationUpdates`. But **no `[BG-LOC] Started for` log** appears between the two `#1` lines, and there's no `[GUEST-SYNC] Ensuring tracking` either. Something is either calling `startBackgroundLocationUpdates` and failing before reaching the "Started for" log at the end, or the log is being dropped somewhere.
+
+**Impact:** Cosmetic. Records still flow at the correct 14-15 second cadence, no duplicates, no gaps. Just makes debug log reading harder because the counter renumbers once near the start.
+
+**Hypotheses to investigate:**
+
+1. **`Location.startLocationUpdatesAsync` throws** on the second call while the task is already running. That would hit the outer catch and log an error — but the error log doesn't appear in the grep. Could also be a path where the catch itself is silent.
+2. **`tour-booking-details.tsx handleStartSharing` auto-resume path** may be firing on screen mount. That path calls `startBackgroundLocationUpdates` directly without a preceding sync log. If the user opens the booking details screen ~14 seconds after app launch, this would reset the counter. Easy to verify: log at the entry of `handleStartSharing`.
+3. **Something in the React lifecycle** (screen mount, useEffect re-fire, auth restore completion) triggers an unintended second call.
+
+**Next step:** Add a marker `console.log` at the very first line of `handleStartSharing` and at the very first line of `startBackgroundLocationUpdates`. Reproduce, check which caller is firing the second time.
+
+**Note:** Noted as an observation, not an active bug. Tracking is functionally correct. Investigation is worth doing because the same root cause might hide a worse symptom we haven't caught yet.
 
 ---
 
@@ -114,9 +140,10 @@ If the burst race (item 2) or a future retry (item 1) sends the same lat/lng twi
 
 1. ~~**Item 3 (heartbeat-based skip)**~~ — ✅ **done 2026-04-10 evening** (also fixed guide zombie-task bug as a bonus)
 2. ~~**Item 1 (fetch retry)**~~ — ✅ **done 2026-04-11 overnight** (verified on both natural and artificial failures)
-3. **Item 2 (burst race)** — 2-line fix, do it opportunistically when touching `backgroundLocation.ts`
-4. **Item 6 (404 handling)** — concrete gap, not yet observed but trivial to fix
-5. **Item 4 (iOS)** — big scope, separate project
-6. Everything else — revisit only when specific evidence appears
+3. ~~**Item 2 (burst race)**~~ — ✅ **done 2026-04-11 overnight**
+4. **NEW: Mysterious counter reset** — low priority, investigate with marker logs in `handleStartSharing` and `startBackgroundLocationUpdates` entry
+5. **Item 6 (404 handling)** — concrete gap, not yet observed but trivial to fix
+6. **Item 4 (iOS)** — big scope, separate project
+7. Everything else — revisit only when specific evidence appears
 
-**Remaining observed items: just Item 2 (burst race, low impact).** All high/medium priority observed issues are resolved.
+**All three original observed items (Items 1, 2, 3) are resolved.** One new observation added — noted as low priority because it's cosmetic, not functional. The theoretical items below remain unchanged.
