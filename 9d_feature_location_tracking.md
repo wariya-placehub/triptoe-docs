@@ -167,16 +167,51 @@ sequenceDiagram
     API->>Task: 200 OK (or 410 if tour ended)
 ```
 
-### Start Semantics: Guide Skips, Guest Does Not
+### Start Semantics: Both Syncs Skip When Healthy (via Heartbeat)
 
 `startBackgroundLocationUpdates` itself is idempotent — it always calls `Location.startLocationUpdatesAsync` regardless of whether the task is "already registered". Expo-location handles the duplicate internally.
 
-**The two sync helpers differ in how they call it:**
+Both `syncGuideLocationTracking` and `syncGuestLocationTracking` call `isLocationSharingActive(sessionId)` before starting. If it returns `true`, the sync skips the restart — counter stays monotonic, no unnecessary native reconfigures.
 
-- `syncGuideLocationTracking` calls `isLocationSharingActive(sessionId)` first. If the guide is already tracking this specific session, it skips. This keeps the counter monotonic and avoids unnecessary native reconfigures on the 60-second tick.
-- `syncGuestLocationTracking` does **not** skip. It always calls start. Deliberate trade-off for robustness: after `adb install -r`, the native foreground service gets killed but the task registration can linger, so `isLocationSharingActive` returns a false positive. Unconditionally restarting heals that case.
+The trustworthiness of this check comes from the heartbeat described below. Earlier versions had the guest sync unconditionally restart every tick (the check was not safe to trust), which caused a 60-second restart churn. With the heartbeat in place, the guest sync behaves like the guide.
 
-Cost of the guest's unconditional restart: the task counter resets every 60 seconds and there's a brief (~130ms) restart interruption. Records still land in the database and the cadence stays within target. A heartbeat-based health check that would let the guest sync skip when healthy is a noted follow-up.
+### Heartbeat Liveness Check
+
+`isLocationSharingActive` cannot rely on `TaskManager.isTaskRegisteredAsync` alone. The registration signal returns a **stale-positive** in several real scenarios:
+
+1. **`adb install -r` over a running app** — the new process inherits the task registration but the native foreground service is dead
+2. **App force-close + relaunch** — the JS-native task binding can land in a zombie state where `TaskService: Handling intent` keeps firing on the native side but the JS executor never runs
+3. **OS-initiated service restart** after a crash — the registration survives but the location client may not be reattached
+
+In all of these, `isTaskRegisteredAsync` says "yes, it's running" but no callbacks reach JS. From the sync layer's perspective, the task looks healthy and it skips the restart that would actually fix the problem. The observed symptom was "task sent 2 records after relaunch and then total silence."
+
+**The fix** is to require **proof of liveness** in the process. `backgroundLocation.ts` tracks two module-level timestamps:
+
+- `_taskStartedAt` — set when `startBackgroundLocationUpdates` returns successfully
+- `_lastSuccessfulSendAt` — set inside the task callback on each confirmed successful fetch
+
+`isLocationSharingActive` then returns `true` iff:
+
+1. The task is registered in TaskManager, AND
+2. The persisted session in SecureStore matches the requested `tourSessionId`, AND
+3. Either we're inside the startup grace window (`_taskStartedAt` is recent, within 30s) OR we have recent proof of liveness (`_lastSuccessfulSendAt` is within 30s)
+
+If none of the liveness conditions hold, the check returns `false` — even if `isTaskRegisteredAsync` says yes — and the caller is expected to restart. On a fresh process both timestamps are 0, so the check returns false and the layout-level syncs restart the task cleanly. **Intentional** — fresh processes should never trust inherited registration.
+
+The heartbeat is **in-process** state, not persisted. It doesn't need to survive process restarts — a fresh process should force a fresh start anyway. Module-level state here is acceptable because it's a heuristic, not the source of truth.
+
+```mermaid
+flowchart TD
+    CHECK[isLocationSharingActive] --> REG{TaskManager registered?}
+    REG -->|No| FALSE1[return false]
+    REG -->|Yes| SESS{SecureStore session matches?}
+    SESS -->|No| FALSE2[return false]
+    SESS -->|Yes| GRACE{_taskStartedAt within 30s?}
+    GRACE -->|Yes| TRUE1[return true — grace window]
+    GRACE -->|No| HB{_lastSuccessfulSendAt within 30s?}
+    HB -->|Yes| TRUE2[return true — heartbeat]
+    HB -->|No| FALSE3[return false — stale, caller should restart]
+```
 
 ### Deferred 410 Stop
 
@@ -329,7 +364,7 @@ These are documented so future developers don't repeat them.
 | `distanceInterval > 0` | Google's Fused Location Provider combines the time filter (`setInterval`) and the distance filter (`setMinUpdateDistanceMeters`) as an AND condition. Any non-zero distance value means a stationary phone (dining table, pocket, standing still) never satisfies the filter and receives zero callbacks — the `timeInterval` does **not** act as a fallback. | **`distanceInterval` must stay 0.** The code uses the warning-named constant `LOCATION_DISTANCE_FILTER_MUST_STAY_ZERO` so anyone grepping for the option sees the rule, not a tunable. |
 | Initial-fix burst from FLP | On listener registration, Google FLP delivers any recent cached location fixes in rapid succession, ignoring `setMinUpdateIntervalMillis`. The burst of 5-10 callbacks in the first second trips FLP's internal rate limiter ("location delivery blocked - too fast") and silences all further delivery for minutes. | **JS-side burst suppression.** `BURST_SUPPRESSION_INTERNAL_WORKAROUND_MS` rejects callbacks that arrive less than ~10 seconds after the last successful send. Only consume the budget on confirmed successful fetches so network errors don't poison the window. |
 | Stop-then-start the native task rapidly | Rapid `stopLocationUpdatesAsync` → `startLocationUpdatesAsync` cycles caused Android's location provider to enter a throttle state that silenced all delivery for minutes. | **Don't gratuitously cycle.** `startBackgroundLocationUpdates` is idempotent — if the task needs a fresh registration, just call start. Expo-location handles "already running" internally. |
-| Skip-if-running check on the guest side | `isTaskRegisteredAsync` returned true for a stale task after `adb install -r` while the native foreground service was dead. The code skipped `startLocationUpdatesAsync`, so no fresh subscription was created and the task stayed silently broken. | **Guest sync unconditionally restarts.** Guide sync can safely skip because guide churn would be visible in the counter. Guest sync prioritizes self-healing over counter cleanliness. |
+| Trusting `isTaskRegisteredAsync` as a "task is healthy" signal | After force-close + relaunch, `adb install -r`, or an OS-initiated service restart, the task registration can persist in TaskManager's repository while the JS-native binding or foreground service is dead. `isTaskRegisteredAsync` returns `true`, the sync thinks everything is fine, and it skips the restart that would have fixed things. Observed symptom: "2 sends after relaunch and then silence," with `TaskService: Handling intent` still firing on the native side while the JS executor never runs. | **Require proof of liveness.** `isLocationSharingActive` checks a module-level heartbeat (`_lastSuccessfulSendAt`) plus a startup grace window (`_taskStartedAt`). Both are 0 on a fresh process, so the check returns false after force-close and forces a clean restart. An earlier workaround had the guest sync unconditionally restart every 60s — that caused 60-second counter churn but is no longer needed now that the check is trustworthy. |
 | Guest auto-resume coupled to a single screen | Earlier, the guest's auto-resume logic only ran from `tour-booking-details.tsx`'s initial load. After `adb install -r` or any force-close that relaunched to the Account page, tracking stayed broken because the user was not on the booking details screen. `isLocationSharingActive` returned a stale positive so manual navigation didn't help either. | **Layout-level sync for both roles.** `syncGuestLocationTracking` runs in `_layout.tsx` the same way `syncGuideLocationTracking` does — on mount, 60s interval, AppState 'active'. Screen navigation is irrelevant. |
 | Multiple effects starting tracking | Two `useEffect` hooks depending on `[user]` both called `startBackgroundLocationUpdates` simultaneously, racing each other. | **One effect owns tracking per role.** The guide sync effect and the guest sync effect in `_layout.tsx` are the single owners. No other effect should call start/stop. |
 | Logout stop racing with auto-start | The logout cleanup (`stopBackgroundLocationUpdates`) was fire-and-forget in the same effect as auto-start. On app boot, user starts as null → stop fires → user becomes guide → start fires → the late-arriving stop kills the just-started task. | **Separate effect for logout.** Only stop on real logout (user was set, then became null), not on initial null during loading. |

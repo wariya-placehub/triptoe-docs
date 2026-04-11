@@ -1,6 +1,6 @@
 # Location Tracking Follow-ups
 
-## Status: Open
+## Status: Open (Item 3 resolved 2026-04-10 evening)
 ## Priority: Mixed (see each item)
 ## Affects: Guide + Guest location sharing
 
@@ -32,15 +32,25 @@ These have concrete evidence behind them from testing on 2026-04-10. They should
 
 **Fix sketch:** Set `_lastForwardedAt = now` *before* the fetch, and reset it to the previous value on fetch failure (so failed sends don't poison the window). 2-line change.
 
-### 3. Guest sync 60-second restart churn — Medium priority
+### 3. Guest sync 60-second restart churn — ✅ Resolved 2026-04-10 evening
 
-**Evidence:** Every tick of `syncGuestLocationTracking` in `_layout.tsx` unconditionally calls `startBackgroundLocationUpdates`. The guest's BG-LOC counter resets to #1 every 60 seconds. Each restart causes ~130ms of tracking interruption and a fresh FLP re-registration (with its own risk of an initial-fix burst being suppressed).
+**Evidence before:** Every tick of `syncGuestLocationTracking` in `_layout.tsx` unconditionally called `startBackgroundLocationUpdates`. The guest's BG-LOC counter reset to #1 every 60 seconds. Each restart caused ~130ms of tracking interruption.
 
-**Why it's this way:** Guest sync can't trust `isLocationSharingActive` as a "task is healthy" signal — `adb install -r` leaves the task registered while the native foreground service is dead. Unconditional restart is the self-healing escape hatch.
+**Why it was this way:** Guest sync couldn't trust `isLocationSharingActive` as a "task is healthy" signal — `adb install -r` and force-close + relaunch both leave the task registered while the native foreground service or JS-native binding is dead. Unconditional restart was the self-healing escape hatch.
 
-**Cost:** Battery drain from foreground service churn. Brief gaps in tracking every minute. Counter resets make debug logs harder to read.
+**Resolution:** A related bug was reported where the guide also hit a zombie-task state after force-close + relaunch (sent 2 records then went silent while `TaskService: Handling intent` kept firing natively). Both bugs had the same root cause: `isTaskRegisteredAsync` isn't a reliable liveness signal.
 
-**Fix sketch:** Add a module-level `_lastSuccessfulSendAt` timestamp in `backgroundLocation.ts`. Extend `isLocationSharingActive` with a liveness check: return `false` if `Date.now() - _lastSuccessfulSendAt > 30_000` even when `isTaskRegisteredAsync` is true. Then `syncGuestLocationTracking` can safely gate on the (now trustworthy) `isLocationSharingActive` and skip restart when healthy. The zombie-task case is still caught because the liveness check fails.
+Added a heartbeat-based liveness check to `isLocationSharingActive` in `backgroundLocation.ts`:
+
+- `_taskStartedAt` — set when `startBackgroundLocationUpdates` returns
+- `_lastSuccessfulSendAt` — set inside the task callback on each confirmed successful send
+- `isLocationSharingActive` returns true iff registered AND session matches AND (inside 30s startup grace OR last success within 30s)
+
+On a fresh process both timestamps are 0, so the check returns false after force-close and forces a clean restart. During sustained normal operation the heartbeat proves liveness and both syncs correctly skip the restart.
+
+**Result:** Both `syncGuideLocationTracking` and `syncGuestLocationTracking` now gate on `isLocationSharingActive`. Counter stays monotonic during normal operation on both roles. Verified on both phones with force-close + relaunch scenarios: task correctly restarts within 1 second of the fresh process starting.
+
+**Commit:** triptoe-mobile `8f683e8` "Add heartbeat liveness check to isLocationSharingActive"
 
 ---
 
@@ -92,8 +102,8 @@ If the burst race (item 2) or a future retry (item 1) sends the same lat/lng twi
 
 ## Recommended order of work
 
-1. **Item 1 (fetch retry)** — concrete bug, observed, cheap fix
-2. **Item 3 (heartbeat-based skip)** — cleans up ongoing churn, enables item 3's fix to land cleanly
+1. ~~**Item 3 (heartbeat-based skip)**~~ — ✅ **done 2026-04-10 evening** (also fixed guide zombie-task bug as a bonus)
+2. **Item 1 (fetch retry)** — concrete bug, observed multiple times including tonight (`[TypeError: Network request failed]` on `[BG-LOC #3]` at 23:36:10 after the guide restart test), cheap fix
 3. **Item 2 (burst race)** — 2-line fix, do it opportunistically when touching `backgroundLocation.ts`
 4. **Item 6 (404 handling)** — concrete gap, not yet observed but trivial to fix
 5. **Item 4 (iOS)** — big scope, separate project
