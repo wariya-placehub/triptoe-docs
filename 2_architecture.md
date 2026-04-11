@@ -223,9 +223,9 @@ For auth flows, token strategy, session restoration, and account deletion detail
 
 ## Location Tracking
 
-Both guide and guest use `expo-location` background location updates via a shared `backgroundLocation.ts` service. Guide tracking auto-starts from the root layout whenever an active session exists (via `useActiveTourStore`). Guest tracking requires explicit opt-in ("Start Sharing Location"). All map positions are displayed by polling the backend — no local position state.
+Both guide and guest use `expo-location` background location updates via a shared, stateless `backgroundLocation.ts` service (reads session + token from `SecureStore` on every callback — no module-level caches). Each role has its own layout-level reconciliation helper — `guideLocationSync.ts` and `guestLocationSync.ts` — called on mount, every 60 seconds, and on `AppState 'active'`. Both guide and guest tracking are screen-independent: the app can be on any screen and tracking survives navigation, force-close, and `adb install -r`. Guest opts in once by tapping "Start Sharing Location"; after that, the backend's `location_sharing_enabled` flag on the check-in makes the preference sticky across app restarts. All map positions are displayed by polling the backend — no local position state.
 
-For the full flow (auto-start, boot resume, background task details, map polling, privacy), see **[9d_feature_location_tracking.md](9d_feature_location_tracking.md)**.
+For the full flow (auto-start, boot resume, background task details, burst suppression, deferred 410 stop, map polling, privacy, and documented pitfalls), see **[9d_feature_location_tracking.md](9d_feature_location_tracking.md)**.
 
 ## QR Codes & Tour Joining
 
