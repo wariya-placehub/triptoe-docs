@@ -63,10 +63,11 @@ The guest now has its own layout-level sync (`guestLocationSync.ts`), mirroring 
 
 1. Calls `GET /guests/my-bookings` — the backend returns `location_sharing_enabled` per booking from the most recent check-in
 2. Filters for the first active booking where `checked_in` and `location_sharing_enabled` are both true and the session status is `check_in_open` or `in_progress`
-3. Calls `startBackgroundLocationUpdates(sessionId, 'guest')` to ensure the task is running
-4. If no qualifying booking exists, stops tracking (guarded on `userType === 'guest'` so it doesn't interfere with guide tracking if roles get mixed)
+3. Calls `isLocationSharingActive(sessionId)` — if true (task registered AND recent heartbeat or within startup grace), skips the restart so the task counter stays monotonic
+4. Otherwise calls `startBackgroundLocationUpdates(sessionId, 'guest')` to restart tracking
+5. If no qualifying booking exists, stops tracking (guarded on `userType === 'guest'` so it doesn't interfere with guide tracking if roles get mixed)
 
-Unlike the guide sync, the guest sync does **not** gate on `isLocationSharingActive` before restarting. A task can be registered in TaskManager while the native foreground service is dead (e.g., after `adb install -r` kills the foreground service without unregistering the task). Skipping the restart in that state leaves tracking silently broken. `startBackgroundLocationUpdates` is idempotent — calling it on an already-running task is safe. The cost is a ~130ms restart interruption once per minute and the task counter resetting. Records still land in the database and the cadence stays within target.
+Both guide and guest sync use the same "check then start" pattern. An earlier iteration had the guest sync unconditionally restart every tick as an escape hatch for stale-positive `isTaskRegisteredAsync` signals — but that caused a 60-second counter reset churn. The heartbeat-based liveness check (see below) made `isLocationSharingActive` trustworthy, so both syncs can now safely skip the restart when healthy.
 
 ```mermaid
 flowchart TD
@@ -74,7 +75,9 @@ flowchart TD
     SYNC2 --> BOOKINGS[GET /guests/my-bookings]
     BOOKINGS --> FILTER{Active booking with location_sharing_enabled?}
     FILTER -->|Yes| PERM2{Fg + bg permission granted?}
-    PERM2 -->|Yes| START2[startBackgroundLocationUpdates - unconditional]
+    PERM2 -->|Yes| ACTIVE2{Task already running for this session? heartbeat check}
+    ACTIVE2 -->|Yes| NOOP2a[Skip — counter stays monotonic]
+    ACTIVE2 -->|No| START2[startBackgroundLocationUpdates]
     PERM2 -->|No| WAIT2[Wait for user to tap 'Start Sharing Location']
     FILTER -->|No| PERSISTED2{Tracking running as guest?}
     PERSISTED2 -->|Yes| STOP2[stopBackgroundLocationUpdates]
@@ -154,18 +157,25 @@ The background task swallows the burst with a JS-side rate limiter:
 const BURST_SUPPRESSION_INTERNAL_WORKAROUND_MS = 10_000;
 let _lastForwardedAt = 0;
 
-// Inside the task callback, before the fetch:
+// Inside the task callback:
 const now = Date.now();
 if (now - _lastForwardedAt < BURST_SUPPRESSION_INTERNAL_WORKAROUND_MS) {
   return;  // suppress — burst guard
 }
-// ... fetch ...
-if (response.ok) {
-  _lastForwardedAt = now;  // only consume the budget on success
-}
+// Claim the window SYNCHRONOUSLY, before any await. Any concurrent
+// callback that runs during our fetch will see the updated timestamp
+// and get correctly suppressed at its own check.
+_lastForwardedAt = now;
+// ... await token, await fetch, etc ...
 ```
 
-Only successful sends consume the budget — failed fetches (network errors, 5xx) don't poison the window and block the next legitimate callback. The constant has a warning name and a comment that calls it out as a workaround, not a tunable.
+**Why set `_lastForwardedAt` before the fetch rather than after a successful response?**
+
+An earlier version assigned `_lastForwardedAt = now` only inside the `if (response.ok)` branch — the intent was to avoid "poisoning" the suppression window on failed sends, so the next legitimate callback could retry immediately. But this created a race condition: two callbacks firing in the same event-loop tick could both pass the guard (since neither had written yet), both `await` the fetch, and both successfully forward a location — producing a duplicate DB row.
+
+Assigning the timestamp synchronously right after the guard passes means concurrent callbacks can't race. The "don't poison on failure" concern turns out to be a non-issue in practice because the task's time interval (15s) is already greater than the suppression window (10s), so the next legitimate callback always passes the check after a failure anyway.
+
+The constant has a warning name and a comment that calls it out as a workaround, not a tunable.
 
 ### Distance Filter Must Stay Zero
 
@@ -451,7 +461,7 @@ Entries should appear every ~15 seconds with recent `recorded_at` timestamps.
 |---|---|
 | `src/services/backgroundLocation.ts` | Stateless background task definition, start/stop, burst suppression, deferred 410 stop, warning-named constants |
 | `src/services/guideLocationSync.ts` | Guide reconciliation helper. Reads active sessions from `useActiveTourStore`, ensures native task matches state. Skips restart when already healthy. |
-| `src/services/guestLocationSync.ts` | Guest reconciliation helper. Reads bookings from `/guests/my-bookings`, finds the first active booking with `location_sharing_enabled=true`, unconditionally calls start. |
+| `src/services/guestLocationSync.ts` | Guest reconciliation helper. Reads bookings from `/guests/my-bookings`, finds the first active booking with `location_sharing_enabled=true`, gates on `isLocationSharingActive` before calling start (skips when heartbeat proves liveness). |
 | `src/stores/useActiveTourStore.ts` | Zustand store: active session detection for guides (drives guide sync) |
 | `src/services/location.ts` | API calls for location read/write |
 | `src/utils/permissions.ts` | `requestFullLocationPermission()` — foreground + background |
