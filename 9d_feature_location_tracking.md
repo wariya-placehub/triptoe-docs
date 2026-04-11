@@ -111,6 +111,39 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
 
 **Performance?** `SecureStore.getItemAsync` is a few milliseconds per call. At a 15-second cadence, the overhead is negligible.
 
+### Fetch Retry on Network Errors
+
+React Native's `fetch` throws a `TypeError` with the message "Network request failed" when the underlying HTTP request fails before getting a response — DNS miss, TLS handshake timeout, socket closed mid-flight, idle connection reuse on a dead keep-alive, etc. These are usually transient, and the very next attempt often succeeds because the stack re-establishes the connection.
+
+The background task wraps its fetch in `fetchLocationUpdateWithRetry` which catches `TypeError` **once** and retries immediately:
+
+```typescript
+async function fetchLocationUpdateWithRetry(url, init, callNum): Promise<Response | null> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    const isNetworkError = err instanceof Error && err.message.includes('Network request failed');
+    if (!isNetworkError) throw err;
+    console.log(`[BG-LOC #${callNum}] Fetch failed, retrying once`);
+    try {
+      const response = await fetch(url, init);
+      console.log(`[BG-LOC #${callNum}] Retry succeeded`);
+      return response;
+    } catch {
+      console.log(`[BG-LOC #${callNum}] Retry also failed, giving up until next callback`);
+      return null;
+    }
+  }
+}
+```
+
+**Retry rules:**
+
+- **ONE immediate retry only.** No backoff, no loop. The 15-second task interval is the effective upper bound on time spent in one callback.
+- **ONLY on client-side network errors** (the `TypeError` from the fetch itself). 4xx, 5xx, and other non-OK responses are NOT retried — they indicate the request was actually delivered and the server made a decision. Retrying those would be wasted work or harmful (e.g., 410 signals the tour ended and has its own deferred-stop path).
+- **`null` return** means both attempts threw; caller drops the update and waits for the next callback.
+- **Non-network errors are re-thrown** to the outer task handler so genuine programmer errors aren't silenced by the retry logic.
+
 ### Burst Suppression
 
 Google's Fused Location Provider dumps cached location fixes in rapid succession when a listener is first registered — 5-10 callbacks in the first second, ignoring `setMinUpdateIntervalMillis`. Forwarding all of them to the backend triggers FLP's internal rate limiter ("location delivery blocked - too fast"), which silences delivery for **minutes** afterward.
@@ -385,6 +418,9 @@ The production code has persistent `[BG-LOC #N]`, `[GUIDE-SYNC]`, and `[GUEST-SY
 - `[BG-LOC] Started for <role> session=<id>` — a new native task registration was issued
 - `[BG-LOC #N] Sent (<role> session=<id>)` — a location was successfully forwarded to the backend
 - `[BG-LOC #N] Suppressed (burst guard)` — FLP delivered a cached fix that fell inside the 10-second suppression window
+- `[BG-LOC #N] Fetch failed, retrying once` — first fetch attempt threw a `TypeError: Network request failed`; the retry path is about to run
+- `[BG-LOC #N] Retry succeeded` — retry completed and the response is being handled normally
+- `[BG-LOC #N] Retry also failed, giving up until next callback` — both attempts threw; this update is dropped and the next ~15s tick will try fresh
 - `[BG-LOC #N] Tour ended (410), deferring native stop` — the backend rejected the send because the tour ended; the task will stop itself on the next macrotask
 - `[BG-LOC] Stopping (reason=..., sent N updates)` — the native task was torn down; the `reason` identifies the caller
 - `[GUIDE-SYNC] Starting for session=<id>` / `[GUEST-SYNC] Ensuring tracking for session=<id>` — the layout-level sync fired and decided to start tracking

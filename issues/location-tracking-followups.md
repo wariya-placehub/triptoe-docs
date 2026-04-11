@@ -1,6 +1,6 @@
 # Location Tracking Follow-ups
 
-## Status: Open (Item 3 resolved 2026-04-10 evening)
+## Status: Open (Item 1 and Item 3 resolved 2026-04-10 evening / 2026-04-11 overnight)
 ## Priority: Mixed (see each item)
 ## Affects: Guide + Guest location sharing
 
@@ -12,15 +12,25 @@ This file tracks known location tracking concerns that are not yet addressed. It
 
 These have concrete evidence behind them from testing on 2026-04-10. They should be addressed in a deliberate future pass.
 
-### 1. No retry on fetch failures — High priority
+### 1. No retry on fetch failures — ✅ Resolved 2026-04-11 overnight
 
-**Evidence:** During a live tour session on 2026-04-10, the guide's task showed ~50% fetch failure rate with `[TypeError: Network request failed]` alternating with successful sends. Failures recovered on their own after a few minutes. Suspected cause: Railway connection reuse going stale, or cold-scaling after an idle period.
+**Evidence before:** During live tour sessions on 2026-04-10, the guide's task intermittently showed `[TypeError: Network request failed]` alternating with successful sends. Failures recovered on their own after a few minutes. Suspected cause: Railway connection reuse going stale, or cold-scaling after an idle period.
 
-**Current behavior:** A failed fetch in the task callback is silently caught. The next scheduled callback (~15 seconds later) tries fresh from scratch. The dropped location is lost.
+**Before the fix:** A failed fetch in the task callback was silently caught by the outer handler. The next scheduled callback (~15 seconds later) tried fresh from scratch. The dropped location was lost. Effective tracking cadence halved during failure windows.
 
-**Cost:** Effective tracking cadence halves during a failure window. Over minutes this can look like the user is frozen on the map.
+**Resolution:** Added `fetchLocationUpdateWithRetry` in `backgroundLocation.ts`. One immediate retry on `TypeError: Network request failed`. Does not retry on 4xx, 5xx, or 410 (server made a decision; retrying would be wasted work or harmful). Returns `null` when both attempts throw so the task callback drops the update and waits for the next tick.
 
-**Fix sketch:** Single immediate retry on `TypeError: Network request failed`. Do not retry on 4xx or 410. ~10-15 lines in `backgroundLocation.ts` inside the task callback.
+Three new log lines for observability:
+
+- `[BG-LOC #N] Fetch failed, retrying once`
+- `[BG-LOC #N] Retry succeeded`
+- `[BG-LOC #N] Retry also failed, giving up until next callback`
+
+**Verified on both paths:**
+- **Scenario A (retry succeeds):** caught a natural transient failure on the first callback of a fresh guide process (2026-04-11 00:54 logs — fetch failed, retry succeeded 419ms later, record landed).
+- **Scenario B (both fail):** deliberate 50-second outage induced via `adb shell svc wifi disable` + `svc data disable`. Every outage callback logged both the retry attempt and the giving-up line. Recovery was clean — first successful send 7 seconds after network restored. As a bonus, the heartbeat-driven layout sync correctly treated the prolonged silence as a staleness signal and restarted the task partway through the outage, without user-visible impact.
+
+**Commit:** triptoe-mobile `3071f04` "Add single-retry on TypeError from the location update fetch"
 
 ### 2. Burst suppression race causing duplicate records — Low priority
 
@@ -103,8 +113,10 @@ If the burst race (item 2) or a future retry (item 1) sends the same lat/lng twi
 ## Recommended order of work
 
 1. ~~**Item 3 (heartbeat-based skip)**~~ — ✅ **done 2026-04-10 evening** (also fixed guide zombie-task bug as a bonus)
-2. **Item 1 (fetch retry)** — concrete bug, observed multiple times including tonight (`[TypeError: Network request failed]` on `[BG-LOC #3]` at 23:36:10 after the guide restart test), cheap fix
+2. ~~**Item 1 (fetch retry)**~~ — ✅ **done 2026-04-11 overnight** (verified on both natural and artificial failures)
 3. **Item 2 (burst race)** — 2-line fix, do it opportunistically when touching `backgroundLocation.ts`
 4. **Item 6 (404 handling)** — concrete gap, not yet observed but trivial to fix
 5. **Item 4 (iOS)** — big scope, separate project
 6. Everything else — revisit only when specific evidence appears
+
+**Remaining observed items: just Item 2 (burst race, low impact).** All high/medium priority observed issues are resolved.
