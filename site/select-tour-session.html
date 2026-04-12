@@ -18,7 +18,21 @@
   <img src="/triptoe-long.png" alt="TripToe">
   <h1>Browse Tour Sessions</h1>
   <p>Download the app to see upcoming sessions and join one.</p>
-  <a class="btn" href="https://play.google.com/store/apps/details?id=com.triptoe.mobile">Download TripToe</a>
-  <p class="note">After installing, scan the QR code again to browse sessions.</p>
+  <a id="download-btn" class="btn" href="https://play.google.com/store/apps/details?id=com.triptoe.mobile">Download TripToe</a>
+  <p class="note">After installing, open the app to browse sessions — no need to scan again.</p>
+  <script>
+    // Encode the tour template id into the Play Store referrer parameter so
+    // the freshly-installed app can pick it up via the Install Referrer API
+    // and route the user straight to the session picker. Falls back to a
+    // plain Play Store link if the path doesn't match the expected pattern.
+    (function () {
+      var match = window.location.pathname.match(/^\/t\/(\d+)$/);
+      if (!match) return;
+      var tourTemplateId = match[1];
+      var referrer = encodeURIComponent('tour_template_id=' + tourTemplateId);
+      document.getElementById('download-btn').href =
+        'https://play.google.com/store/apps/details?id=com.triptoe.mobile&referrer=' + referrer;
+    })();
+  </script>
 </body>
 </html>

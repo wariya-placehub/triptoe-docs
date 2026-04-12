@@ -71,15 +71,17 @@ flowchart TD
 
 ## Route Files
 
-### `app/s/[id].tsx` — Session Deep Link
+### `app/(deeplinks)/s/[id].tsx` — Session Deep Link
 
 Handles `https://triptoe.app/s/{id}` and `triptoe://s/{id}` (Expo's normalized form).
+
+Deep link handlers navigate to the **dashboard first**, then push the detail screen on top. This ensures back navigation from the detail screen returns to the tabbed dashboard instead of stranding the user on a blank screen.
 
 ```mermaid
 sequenceDiagram
     participant Camera as Phone Camera
     participant Router as Expo Router
-    participant Route as app/s/[id].tsx
+    participant Route as app/(deeplinks)/s/[id].tsx
     participant Store as useAuthStore
     participant API as Backend API
     participant Screen as Target Screen
@@ -110,10 +112,10 @@ sequenceDiagram
         Route->>API: POST /bookings/qr-scan {tour_session_id: 100065}
         alt 200 OK
             Route->>Screen: Alert "Booked!" with tour title + date
-            Route->>Screen: router.replace('/(guest)/tour-booking-details')
+            Route->>Screen: router.replace('/(guest)/dashboard') then push tour-booking-details
         else 409 Conflict
             Route->>Screen: Alert "Already Booked"
-            Route->>Screen: router.replace('/(guest)/tour-booking-details')
+            Route->>Screen: router.replace('/(guest)/dashboard') then push tour-booking-details
         else 404 Not Found
             Route->>Screen: Alert "Tour Not Found"
             Route->>Screen: router.replace('/(guest)/dashboard')
@@ -123,15 +125,17 @@ sequenceDiagram
     end
 ```
 
-### `app/t/[id].tsx` — Template Deep Link
+A fallback `headerLeft` (home icon) on `tour-booking-details` handles edge cases where `navigation.canGoBack()` is false — it navigates to the dashboard directly.
+
+### `app/(deeplinks)/t/[id].tsx` — Template Deep Link
 
 Handles `https://triptoe.app/t/{id}` and `triptoe://t/{id}`.
 
-Simpler than the session flow — no booking API call. Just routes to the session picker where the guest can choose a specific date/time.
+Simpler than the session flow — no booking API call. Routes to the dashboard first, then pushes the session picker on top so back navigation lands on the tabbed dashboard.
 
 | Auth state | Behavior |
 |---|---|
-| Guest | `router.replace('/(guest)/select-tour-session', { tour_template_id: id })` |
+| Guest | Navigate to guest dashboard, then push `select-tour-session` with `{ tour_template_id: id }` |
 | Guide | Fetches template title, shows alert, routes to guide dashboard |
 | Signed out | Stashes pendingDeepLink, routes to guest signin/signup |
 | Cold boot | Waits for `loading === false` before deciding |
@@ -173,11 +177,49 @@ The pending link is cleared in these cases:
 - **User taps "Sign in as Guide" / "Sign in as Guest"**: signin/signup role-switch button calls `setPendingDeepLink(null)` to cancel the intent and routes to the welcome screen
 - **App killed**: `pendingDeepLink` is Zustand state only (not persisted to `SecureStore`), so it's lost on app kill
 
+## Deferred Deep Linking (Install Referrer)
+
+Users without the app installed scan a QR with the phone camera and land on the Cloudflare Worker's fallback HTML page (`book-tour-session.html` or `select-tour-session.html`). The Download button on those pages constructs a Play Store URL that encodes the tour identifier in the `referrer` query parameter:
+
+```
+https://play.google.com/store/apps/details?id=com.triptoe.mobile&referrer=tour_session_id%3D{id}
+```
+
+The encoding is done client-side via a small inline script that reads `window.location.pathname` to extract the ID. The Cloudflare Worker itself is unchanged — it still serves the static HTML — but the static HTML embeds the rewriting logic.
+
+After install, the freshly-launched app reads the referrer string via Google's Install Referrer API (`react-native-play-install-referrer`), parses the `tour_session_id` or `tour_template_id` value, and constructs a synthetic `pendingDeepLink` URL (`https://triptoe.app/s/{id}` or `/t/{id}`). The existing replay path in `_layout.tsx` then takes over after sign-in — same channel as a QR scan, no separate first-install code path.
+
+A `SecureStore` flag (`install_referrer_consumed`) ensures the referrer is read **only once**, on the first launch after install. The flag is set **before** the async lookup so a crash mid-flow can't loop. The Install Referrer Library returns the original referrer indefinitely, so without this guard a second launch could re-fire the deep link long after the user has moved on.
+
+```mermaid
+sequenceDiagram
+    participant Camera as Phone Camera
+    participant Browser as Browser
+    participant Worker as Cloudflare Worker
+    participant Play as Play Store
+    participant App as TripToe (fresh install)
+
+    Camera->>Browser: triptoe.app/s/100065
+    Browser->>Worker: GET /s/100065
+    Worker->>Browser: book-tour-session.html (with rewriter JS)
+    Browser->>Browser: JS rewrites Download href to include &referrer=tour_session_id%3D100065
+    Browser->>Play: User taps Download
+    Play->>Play: User installs app
+    Play->>App: Stores install referrer
+    App->>App: First launch — Install Referrer API returns "tour_session_id=100065"
+    App->>App: setPendingDeepLink("https://triptoe.app/s/100065")
+    Note over App: User signs in, layout replay logic routes to booking
+```
+
+**Local testing limitation**: `adb install` always returns an empty install referrer — this is a Google Play platform restriction, not a bug. The end-to-end flow can only be verified by uploading an AAB to the Play Console internal test track and installing through Play. For unit-testing the parser logic, set the SecureStore flag, manually call `useAuthStore.getState().setPendingDeepLink(...)` from a debug screen, and confirm the replay path fires correctly.
+
+**Organic installs** (users finding the app via Play Store search, not via a QR link) have an empty referrer string and the lookup is a no-op. No harm.
+
 ## Cold Boot Race
 
 When the app is **completely closed** and the user scans a QR:
 
-1. Expo Router mounts `app/s/[id].tsx` during cold start
+1. Expo Router mounts `app/(deeplinks)/s/[id].tsx` during cold start
 2. `useAuthStore.loading` is `true` while `restoreSession()` reads from `SecureStore`
 3. The route file checks `if (authLoading) return;` — shows `<LoadingScreen message="Joining tour..." />` and waits
 4. `restoreSession()` completes → `loading` becomes `false`
@@ -212,8 +254,8 @@ The in-app scanner handles booking, 409/404 errors, and template-vs-session rout
 
 | File | Role |
 |---|---|
-| `app/s/[id].tsx` | Session deep-link route (booking, auth-gating, error handling) |
-| `app/t/[id].tsx` | Template deep-link route (session picker, auth-gating) |
+| `app/(deeplinks)/s/[id].tsx` | Session deep-link route (booking, auth-gating, error handling) |
+| `app/(deeplinks)/t/[id].tsx` | Template deep-link route (session picker, auth-gating) |
 | `app/_layout.tsx` | Pending deep-link replay after login |
 | `app/(guest)/signin.tsx` | Banner when `pendingDeepLink` is set; "Sign in as Guide" button clears it |
 | `app/(guest)/signup.tsx` | Same |
@@ -221,15 +263,16 @@ The in-app scanner handles booking, 409/404 errors, and template-vs-session rout
 | `src/utils/tourUtils.ts` | `parseQRData()` — parses both URL forms |
 | `src/stores/useAuthStore.ts` | `pendingDeepLink` state + `hasGuestAccount` flag |
 | `triptoe-docs/site/worker.js` | Cloudflare Worker — rewrites `/s/` and `/t/` to fallback HTML |
-| `triptoe-docs/site/book-tour-session.html` | "Download TripToe" fallback for session QRs |
-| `triptoe-docs/site/select-tour-session.html` | "Download TripToe" fallback for template QRs |
+| `triptoe-docs/site/book-tour-session.html` | "Download TripToe" fallback for session QRs; inline JS encodes the tour ID into the Play Store referrer parameter |
+| `triptoe-docs/site/select-tour-session.html` | "Download TripToe" fallback for template QRs; inline JS encodes the tour ID into the Play Store referrer parameter |
+| `react-native-play-install-referrer` (npm) | Wraps Google's Install Referrer API; surfaces the referrer string to JS on first launch after install |
 
 ## Backend Endpoints Used
 
 | Endpoint | Called by | Purpose |
 |---|---|---|
-| `POST /bookings/qr-scan` | `app/s/[id].tsx` | Book a session by ID. Returns 200 (booked), 409 (already booked), 404 (not found) |
-| `GET /tour-sessions/{id}` | `app/s/[id].tsx` (guide path) | Fetch tour title + date for the guide alert |
-| `GET /tours/{id}` | `app/t/[id].tsx` (guide path) | Fetch template title for the guide alert |
+| `POST /bookings/qr-scan` | `app/(deeplinks)/s/[id].tsx` | Book a session by ID. Returns 200 (booked), 409 (already booked), 404 (not found) |
+| `GET /tour-sessions/{id}` | `app/(deeplinks)/s/[id].tsx` (guide path) | Fetch tour title + date for the guide alert |
+| `GET /tours/{id}` | `app/(deeplinks)/t/[id].tsx` (guide path) | Fetch template title for the guide alert |
 | `GET /tour-sessions/{id}/qr` | Guide app (QR modal) | Generate session QR code image |
 | `GET /tour-templates/{id}/qr` | Guide app (QR modal) | Generate template QR code image |

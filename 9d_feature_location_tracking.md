@@ -90,7 +90,7 @@ flowchart TD
 - `userType` parameter determines the API endpoint (`/location/update` for guests, `/location/guide/update` for guides)
 - Uses raw `fetch()` (not Axios) because the background task runs outside React's component tree
 - Shows a persistent foreground service notification (required for Android 14+)
-- Updates every `LOCATION_UPDATE_INTERVAL_SECONDS` (default: 15 seconds)
+- Updates every `LOCATION_UPDATE_INTERVAL_SECONDS` (default: 30 seconds)
 
 ### Stateless Task: Read SecureStore on Every Callback
 
@@ -112,7 +112,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
 
 **Why not cache the token in memory?** An earlier iteration cached `activeAccessToken` in a module variable populated by the caller. When the main app's axios interceptor refreshed the JWT on a 401, the new token went to SecureStore, but the background task kept using the old cached value and silently got 401s on every send. The entire stale-cache class of bug is eliminated by reading fresh on every callback.
 
-**Performance?** `SecureStore.getItemAsync` is a few milliseconds per call. At a 15-second cadence, the overhead is negligible.
+**Performance?** `SecureStore.getItemAsync` is a few milliseconds per call. At a 30-second cadence, the overhead is negligible.
 
 ### Fetch Retry on Network Errors
 
@@ -142,7 +142,7 @@ async function fetchLocationUpdateWithRetry(url, init, callNum): Promise<Respons
 
 **Retry rules:**
 
-- **ONE immediate retry only.** No backoff, no loop. The 15-second task interval is the effective upper bound on time spent in one callback.
+- **ONE immediate retry only.** No backoff, no loop. The 30-second task interval is the effective upper bound on time spent in one callback.
 - **ONLY on client-side network errors** (the `TypeError` from the fetch itself). 4xx, 5xx, and other non-OK responses are NOT retried — they indicate the request was actually delivered and the server made a decision. Retrying those would be wasted work or harmful (e.g., 410 signals the tour ended and has its own deferred-stop path).
 - **`null` return** means both attempts threw; caller drops the update and waits for the next callback.
 - **Non-network errors are re-thrown** to the outer task handler so genuine programmer errors aren't silenced by the retry logic.
@@ -173,7 +173,7 @@ _lastForwardedAt = now;
 
 An earlier version assigned `_lastForwardedAt = now` only inside the `if (response.ok)` branch — the intent was to avoid "poisoning" the suppression window on failed sends, so the next legitimate callback could retry immediately. But this created a race condition: two callbacks firing in the same event-loop tick could both pass the guard (since neither had written yet), both `await` the fetch, and both successfully forward a location — producing a duplicate DB row.
 
-Assigning the timestamp synchronously right after the guard passes means concurrent callbacks can't race. The "don't poison on failure" concern turns out to be a non-issue in practice because the task's time interval (15s) is already greater than the suppression window (10s), so the next legitimate callback always passes the check after a failure anyway.
+Assigning the timestamp synchronously right after the guard passes means concurrent callbacks can't race. The "don't poison on failure" concern turns out to be a non-issue in practice because the task's time interval (30s) is already greater than the suppression window (10s), so the next legitimate callback always passes the check after a failure anyway.
 
 The constant has a warning name and a comment that calls it out as a workaround, not a tunable.
 
@@ -201,7 +201,7 @@ sequenceDiagram
     participant Store as SecureStore
     participant API as Backend
 
-    Note over Task: Every ~15 seconds when FLP delivers a location
+    Note over Task: Every ~30 seconds when FLP delivers a location
     Task->>Store: getItemAsync(ACTIVE_SESSION_KEY)
     Store->>Task: { tourSessionId, userType }
     Task->>Store: getItemAsync(access_token)
@@ -228,18 +228,21 @@ The trustworthiness of this check comes from the heartbeat described below. Earl
 
 In all of these, `isTaskRegisteredAsync` says "yes, it's running" but no callbacks reach JS. From the sync layer's perspective, the task looks healthy and it skips the restart that would actually fix the problem. The observed symptom was "task sent 2 records after relaunch and then total silence."
 
-**The fix** is to require **proof of liveness** in the process. `backgroundLocation.ts` tracks two module-level timestamps:
+**The fix** is to require **proof of liveness** in the process. `backgroundLocation.ts` groups all tracking-task state into a single `_trackingState` object with atomic `initForStart` / `clearAll` helpers so related fields can't drift out of sync. The fields used for the liveness check are:
 
-- `_taskStartedAt` — set when `startBackgroundLocationUpdates` returns successfully
-- `_lastSuccessfulSendAt` — set inside the task callback on each confirmed successful fetch
+- `taskStartedAt` — set when `startBackgroundLocationUpdates` returns successfully
+- `lastSuccessfulSendAt` — set inside the task callback on each confirmed successful fetch
+- `firstStartWithoutSuccessAt` — set when a start happens while `lastSuccessfulSendAt` is still 0; **preserved across restarts** in a no-success chain and only cleared on a successful send. Used by the user-visible `getTrackingStatus` path so the grace window runs once per outage, not once per layout-sync restart.
 
 `isLocationSharingActive` then returns `true` iff:
 
 1. The task is registered in TaskManager, AND
 2. The persisted session in SecureStore matches the requested `tourSessionId`, AND
-3. Either we're inside the startup grace window (`_taskStartedAt` is recent, within 30s) OR we have recent proof of liveness (`_lastSuccessfulSendAt` is within 30s)
+3. Either we're inside the startup grace window (`taskStartedAt` is recent, within `STARTUP_GRACE_PERIOD_MS` = 60s) OR we have recent proof of liveness (`lastSuccessfulSendAt` within `HEARTBEAT_STALE_THRESHOLD_MS` = 60s)
 
-If none of the liveness conditions hold, the check returns `false` — even if `isTaskRegisteredAsync` says yes — and the caller is expected to restart. On a fresh process both timestamps are 0, so the check returns false and the layout-level syncs restart the task cleanly. **Intentional** — fresh processes should never trust inherited registration.
+If none of the liveness conditions hold, the check returns `false` — even if `isTaskRegisteredAsync` says yes — and the caller is expected to restart. On a fresh process all timestamps are 0, so the check returns false and the layout-level syncs restart the task cleanly. **Intentional** — fresh processes should never trust inherited registration.
+
+The heartbeat/grace thresholds are both **60s** (2× the 30s update interval). Sizing them at 1× would trip stale on the first legitimate delay; sizing them at 3× or higher would mask real outages.
 
 The heartbeat is **in-process** state, not persisted. It doesn't need to survive process restarts — a fresh process should force a fresh start anyway. Module-level state here is acceptable because it's a heuristic, not the source of truth.
 
@@ -249,12 +252,32 @@ flowchart TD
     REG -->|No| FALSE1[return false]
     REG -->|Yes| SESS{SecureStore session matches?}
     SESS -->|No| FALSE2[return false]
-    SESS -->|Yes| GRACE{_taskStartedAt within 30s?}
+    SESS -->|Yes| GRACE{taskStartedAt within 60s?}
     GRACE -->|Yes| TRUE1[return true — grace window]
-    GRACE -->|No| HB{_lastSuccessfulSendAt within 30s?}
+    GRACE -->|No| HB{lastSuccessfulSendAt within 60s?}
     HB -->|Yes| TRUE2[return true — heartbeat]
     HB -->|No| FALSE3[return false — stale, caller should restart]
 ```
+
+### User-Visible Tracking Health (`getTrackingStatus`)
+
+`isLocationSharingActive` is the internal check used by the sync layer. It returns a boolean — "restart yes/no." For the UI, `backgroundLocation.ts` also exports `getTrackingStatus(tourSessionId)` which returns a richer status for rendering a warning pill on the map:
+
+```typescript
+type TrackingHealth = 'healthy' | 'stale' | 'stopped';
+interface TrackingStatus {
+  health: TrackingHealth;
+  lastSentAgoMs: number | null;
+}
+```
+
+- **`healthy`** — last successful send was within `USER_VISIBLE_STALE_THRESHOLD_MS` (120s), or we're inside the initial grace window. No warning shown.
+- **`stale`** — task is still registered but hasn't produced a successful send in >120s. Pill reads "Tracking stale · Nm ago".
+- **`stopped`** — task is not registered, or is past the grace window with zero sends. Pill reads "Tracking stopped".
+
+Both the guide session-details screen and the guest booking-details screen poll `getTrackingStatus` at `LOCATION_UPDATE_INTERVAL_SECONDS` (30s) and render the warning pill via `TourMapView`'s `warningText` prop — the pill sits on top of the map itself rather than floating as a separate element, so the warning is visually tied to the data it's commenting on.
+
+**Why `firstStartWithoutSuccessAt`?** The user-visible grace window is measured from this field rather than from `taskStartedAt`. Without that distinction, a sustained network outage would cause the layout sync to restart the task every 60s (heartbeat stale → restart), reset `taskStartedAt = now` each time, and the warning pill would flicker on a ~60s cycle as the grace window perpetually re-opened. Using a field that only clears on a successful send makes the grace window run once per outage, not once per restart.
 
 ### Deferred 410 Stop
 
@@ -328,12 +351,43 @@ Locations are considered "active" if `recorded_at >= now - ACTIVE_LOCATION_THRES
 
 Both guide and guest maps display positions by **polling the backend** — no local position state:
 
-- **Guide map** polls `GET /tour-sessions/{id}/locations` every 15 seconds while the session is active
+- **Guide map** polls `GET /tour-sessions/{id}/locations` every 30 seconds while the session is active
 - **Guest map** polls `GET /tour-sessions/{id}/sync` every 25 seconds while the session is active
 
 All map positions go through the same path: device → background task → backend → polling → map. No special handling for the phone owner's position.
 
 When markers appear, `TourMapView` auto-centers: `fitToCoordinates` for 2+ markers, `animateToRegion` for a single marker. This ensures the map doesn't stay stuck on the meeting point when location data arrives.
+
+### Per-Guest Tracking Status Signal
+
+The guide's guest list on `tour-session-details` shows a colored status signal per guest based on the freshness of their last location update:
+
+| Color | Meaning | Condition |
+|---|---|---|
+| Green | Fresh — actively sharing | Location received within the active threshold |
+| Yellow | Stale — "Location not updating" | Location exists but older than the active threshold |
+| Red | Lost signal | Was sharing but no recent location at all |
+| Gray | Not sharing | Guest has not opted into location sharing |
+
+The guest's avatar color reflects tracking status (not check-in status).
+
+### Guest Distance from Guide
+
+The guest booking details screen (`tour-booking-details`) shows the guest's distance from the guide when both locations are available.
+
+### List-Map Interaction
+
+On the guide's session details screen, the guest list and map are interactive:
+- Tapping a guest row centers the map on that guest's marker
+- Tapping a map marker highlights the corresponding guest row in the list
+
+### Immediate Sync on Screen Focus
+
+Both the guide session details and guest booking details screens call their sync function via `useFocusEffect` so location data refreshes immediately when the screen gains focus, rather than waiting for the next polling tick.
+
+### Battery Perception Copy
+
+The guest's "Start Sharing Location" button includes explanatory copy below it about battery impact to set expectations before the user opts in.
 
 ```mermaid
 sequenceDiagram
@@ -343,7 +397,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Note over Guest, Guide: Background location task (both roles)
-    loop Every 15 seconds
+    loop Every 30 seconds
         Guest->>API: POST /location/update {tour_session_id, lat, lng}
         API->>DB: INSERT guest_location row
         Guide->>API: POST /location/guide/update {tour_session_id, lat, lng}
@@ -351,7 +405,7 @@ sequenceDiagram
     end
 
     Note over Guide: Guide polls for all positions
-    loop Every 15 seconds
+    loop Every 30 seconds
         Guide->>API: GET /tour-sessions/{id}/locations
         API->>DB: Latest guest_location + guide_location (within threshold)
         API->>Guide: {guests: [...], guide_location: {...}, stats: {...}}
@@ -402,7 +456,7 @@ These are documented so future developers don't repeat them.
 
 | Pitfall | What happened | Rule |
 |---|---|---|
-| Module-level state in the background task | Caching `activeTourSessionId`, `activeUserType`, or `activeAccessToken` in module variables made the task fragile across hot reloads, reinstalls, token refreshes. The cached values went stale silently while the "is it registered" signal said everything was fine. An earlier iteration with an in-memory token cache shipped the same bug in a different form — the main app refreshed the JWT but the task kept using the old cached token and got 401s on every send. | **Stateless task.** No module-level mutable state beyond logging counters. Read session and token from SecureStore on every callback. The overhead is negligible at a 15-second cadence. |
+| Module-level state in the background task | Caching `activeTourSessionId`, `activeUserType`, or `activeAccessToken` in module variables made the task fragile across hot reloads, reinstalls, token refreshes. The cached values went stale silently while the "is it registered" signal said everything was fine. An earlier iteration with an in-memory token cache shipped the same bug in a different form — the main app refreshed the JWT but the task kept using the old cached token and got 401s on every send. | **Stateless task.** No module-level mutable state beyond logging counters. Read session and token from SecureStore on every callback. The overhead is negligible at a 30-second cadence. |
 | Calling `stopLocationUpdatesAsync` from within a task callback | The native `LocationTaskConsumer` tore down its location client and foreground service before the current event's `notifyTaskFinishedAsync` could complete. This corrupted the JS-native task binding: `TaskService: Handling intent` kept firing on the native side, but our JS executor silently never ran. Symptom was invisible except by testing after a force-stop + relaunch. | **Defer self-stops to a macrotask.** Clear the session from SecureStore immediately (so concurrent callbacks bail on "no active session"), then schedule the native stop via `setTimeout(() => stopBackgroundLocationUpdates(...), 0)`. The stop runs after the current callback has fully returned and the task cycle has finalized. |
 | `distanceInterval > 0` | Google's Fused Location Provider combines the time filter (`setInterval`) and the distance filter (`setMinUpdateDistanceMeters`) as an AND condition. Any non-zero distance value means a stationary phone (dining table, pocket, standing still) never satisfies the filter and receives zero callbacks — the `timeInterval` does **not** act as a fallback. | **`distanceInterval` must stay 0.** The code uses the warning-named constant `LOCATION_DISTANCE_FILTER_MUST_STAY_ZERO` so anyone grepping for the option sees the rule, not a tunable. |
 | Initial-fix burst from FLP | On listener registration, Google FLP delivers any recent cached location fixes in rapid succession, ignoring `setMinUpdateIntervalMillis`. The burst of 5-10 callbacks in the first second trips FLP's internal rate limiter ("location delivery blocked - too fast") and silences all further delivery for minutes. | **JS-side burst suppression.** `BURST_SUPPRESSION_INTERNAL_WORKAROUND_MS` rejects callbacks that arrive less than ~10 seconds after the last successful send. Only consume the budget on confirmed successful fetches so network errors don't poison the window. |
@@ -430,7 +484,7 @@ The production code has persistent `[BG-LOC #N]`, `[GUIDE-SYNC]`, and `[GUEST-SY
 - `[BG-LOC #N] Suppressed (burst guard)` — FLP delivered a cached fix that fell inside the 10-second suppression window
 - `[BG-LOC #N] Fetch failed, retrying once` — first fetch attempt threw a `TypeError: Network request failed`; the retry path is about to run
 - `[BG-LOC #N] Retry succeeded` — retry completed and the response is being handled normally
-- `[BG-LOC #N] Retry also failed, giving up until next callback` — both attempts threw; this update is dropped and the next ~15s tick will try fresh
+- `[BG-LOC #N] Retry also failed, giving up until next callback` — both attempts threw; this update is dropped and the next ~30s tick will try fresh
 - `[BG-LOC #N] Tour ended (410), deferring native stop` — the backend rejected the send because the tour ended; the task will stop itself on the next macrotask
 - `[BG-LOC] Stopping (reason=..., sent N updates)` — the native task was torn down; the `reason` identifies the caller
 - `[GUIDE-SYNC] Starting for session=<id>` / `[GUEST-SYNC] Ensuring tracking for session=<id>` — the layout-level sync fired and decided to start tracking
@@ -453,7 +507,7 @@ ORDER BY recorded_at DESC
 LIMIT 10;
 ```
 
-Entries should appear every ~15 seconds with recent `recorded_at` timestamps.
+Entries should appear every ~30 seconds with recent `recorded_at` timestamps.
 
 ## Files
 

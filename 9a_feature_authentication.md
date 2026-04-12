@@ -75,6 +75,33 @@ sequenceDiagram
 - Stored as a hash (not plaintext) in `guest.verification_code` table
 - Expire after 10 minutes
 - Sent via Resend email API from `noreply@triptoe.app`
+- Requesting a new code for the same email **deletes any existing unused code** for that email (server-side, in the same transaction). The mobile UI surfaces this with a 30-second cooldown on the Resend control so users don't accidentally invalidate the code they're currently typing.
+
+### Guest Auth UX (Mobile)
+
+The guest signin and signup screens (`app/(guest)/signin.tsx`, `app/(guest)/signup.tsx`) follow the same two-step pattern: enter email → tap Send → enter the 6-digit code → `router.replace` to the dashboard (or the deep-link target). Several details are deliberate:
+
+- **Email format validation** before the API call. Catches typos like a missing `@` so the backend doesn't issue a code for an unreachable address.
+- **Auto-submit** when the verification code field reaches 6 characters. Removes the "Verify" tap. Gated on `!submitting` so a backspace-and-retype during an in-flight request can't double-submit.
+- **OS keyboard auto-fill**: the code input has `textContentType="oneTimeCode"` (iOS) and `autoComplete="one-time-code"` (Android). When supported, the user taps a Gboard suggestion containing the freshly-arrived code and the auto-submit fires immediately.
+- **"Wrong email? Edit" inline link** under the email field once a code has been sent. Tapping it re-enables the email/name fields, clears the code input, and resets the resend cooldown — no need to navigate back and lose state.
+- **Inline resend control** under the verification code field. Shows "Resend in {N}s" countdown for 30 seconds after each send, then becomes a tappable "Resend code" link. Replaces the original blocking "Code Sent" Alert.
+- **Named tour context** when arriving via a deep link. If `pendingDeepLink` is set, the screen fetches the tour title (and start time for sessions) via the public `GET /tours/{id}` or `GET /tour-sessions/{id}` endpoint and shows "Sign in to join *Central Park Walking Tour · Apr 12, 2:00 PM*" instead of the generic "Sign in below to join your tour". Failure falls back silently to the generic copy.
+- **"Already registered" recovery on signup**: a 409 from `/auth/guest/signup` triggers an Alert offering to switch to the signin screen with the email pre-filled (via a route param read on signin via `useEffect` rather than a `useState` initializer, since `useLocalSearchParams` may not be populated on the very first render).
+- **Curated error copy.** The catch blocks for `handleVerify` and `handleSendCode` ignore the backend's literal error string and show user-facing copy. The one exception is the "expired" vs "wrong code" distinction, which is driven by checking `error.response.data.error` for the substring `expired` — robust to small wording changes between the signup-verify and sign-in-verify endpoints.
+- **Auth endpoints bypass the JWT refresh interceptor.** `src/services/api.ts` checks the request URL and returns `Promise.reject(error)` immediately for any `/auth/*` endpoint that 401s, so the interceptor doesn't try to refresh a non-existent token (which would surface "No refresh token" instead of the real backend error).
+
+### Account Status
+
+The `Guest.account_status` column has three values:
+
+| Value | Meaning |
+|---|---|
+| `'basic'` | Guest exists in the DB but has not verified email ownership. The walk-up tourist booking path at `tour_sessions.py` creates a `'basic'` guest from just a name when a guide books on their behalf. |
+| `'verified'` | Guest has proven ownership of their email by entering a verification code. Set by both `/auth/guest/signup/verify` (first-time signup) and `/auth/guest/verify-code` (returning sign-in). |
+| `'deleted'` | Soft-deleted account. |
+
+The `is_verified()` method on the model returns `account_status == 'verified'`. As of this writing, no endpoint reads it to gate functionality — it's a design hook for future features (e.g. "verified-only" tours).
 
 ## Token Strategy
 
@@ -129,11 +156,11 @@ On cold start, `index.tsx` checks `lastUserType`:
 - `'guest'` → auto-redirect to `/(guest)/signin` (or signup if `hasGuestAccount` is false)
 - `null` (first-time user) → show the welcome screen with role selection
 
-The auto-skip fires only once per cold start (tracked via a `useRef`). If the user taps "Sign in as Guest" / "Sign in as Guide" on the signin screen, they navigate back to the welcome screen and can pick the other role.
+The auto-skip fires via a `useEffect` (not `useFocusEffect`) and only once per cold start (tracked via a `useRef`). If the user taps "Sign in as Guest" / "Sign in as Guide" on the signin screen, they navigate back to the welcome screen and can pick the other role.
 
-### Tab Bar on Auth Screens
+### Auth Screens in the Stack
 
-Auth screens (`signin`, `signup`) are inside the `(guide)` and `(guest)` tab navigators but hide the tab bar via `tabBarStyle: { display: 'none' }`. This prevents unauthenticated users from tapping into protected tab screens (which would crash).
+Auth screens (`signin`, `signup`) are Stack siblings of `(tabs)`, not tab entries. They have no tab bar because they live outside the tab navigator entirely. `_layout.tsx` has auth-protection that redirects unauthenticated users on protected screens back to the welcome screen.
 
 ## Auth Protection
 

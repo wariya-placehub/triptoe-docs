@@ -355,6 +355,19 @@ Requires `gcloud` configured with a `triptoe` configuration (`wariyak@gmail.com`
 
 **Signing:** All builds use the release keystore (`triptoe-release.keystore` in project root). Passwords are stored in `keystore.properties` (gitignored). The build script runs `scripts/patch-signing.ps1` after prebuild to inject the release signing config into the generated `build.gradle`.
 
+**Troubleshooting: `EBUSY: resource busy or locked` during prebuild --clean**
+
+`expo prebuild --clean` wipes the `android/` folder before regenerating it. On Windows, the wipe can fail with `EBUSY: resource busy or locked, unlink '...\classes.dex'` (or similar) when a leftover Gradle daemon (or Kotlin compile daemon, or an open Android Studio) is still holding a file handle in `android/app/build/`.
+
+Fix: kill all Java processes and re-run the build.
+
+```
+taskkill /F /IM java.exe /IM javaw.exe
+build.bat --clean
+```
+
+If Android Studio is open, close it first — it spawns its own daemons that will keep relocking files even after the kill. The `taskkill` is a sledgehammer that targets every Java process on the machine, which is fine for a dev workstation but would obviously be wrong on a shared build server.
+
 **EAS build (cloud — 30 free builds/month):**
 
 ```
@@ -475,7 +488,27 @@ cd triptoe-docs/site
 npx wrangler deploy
 ```
 
-Requires Cloudflare login (`npx wrangler login`). Config is in `triptoe-docs/site/wrangler.toml`.
+Requires Cloudflare login (`npx wrangler login`) the first time on a new machine. Config is in `triptoe-docs/site/wrangler.toml`.
+
+**What gets deployed:** every static asset in `triptoe-docs/site/` plus `worker.js`. Wrangler bundles them automatically — there's no separate build step. The deploy is **atomic and instant** (Cloudflare swaps the new version in globally within a few seconds).
+
+**Verify after deploy:**
+
+```bash
+curl -s https://triptoe.app/ | head -5
+curl -s https://triptoe.app/s/100065 | grep -i "play.google.com"
+curl -s https://triptoe.app/.well-known/assetlinks.json | head -5
+```
+
+The session-fallback page should contain the Play Store URL with the install referrer query parameter (`&referrer=tour_session_id%3D...`) once the inline rewriter JS is in place. The assetlinks check confirms Android App Links are still being served with the correct `Content-Type: application/json` (a regression here breaks deep linking app-side).
+
+**Rollback:** Cloudflare keeps previous deployments. From the dashboard go to Workers & Pages → `restless-flower-1f1a` → Deployments → click the previous version → Rollback. There's no CLI rollback command, but you can also `git checkout` the prior version of the source files and run `wrangler deploy` again.
+
+**Common gotchas:**
+
+- The `wrangler.toml` `name` field (`restless-flower-1f1a`) is the Worker identifier on Cloudflare. Don't rename it — the custom domain `triptoe.app` is bound to that exact name.
+- Files at the top level of `site/` are served as static assets. Subfolders work too (`.well-known/assetlinks.json`).
+- The `worker.js` rewrites `/s/{id}` and `/t/{id}` paths to the corresponding fallback HTML files. If you add new dynamic paths, update both the worker AND any references in the mobile app's `parseQRData()`.
 
 ## Email Routing
 

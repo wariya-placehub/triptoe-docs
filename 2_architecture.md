@@ -58,7 +58,7 @@ graph TB
 | Concern | Technology |
 |---|---|
 | Framework | Expo SDK 55 (React Native 0.83) |
-| Navigation | Expo Router (file-based) with bottom tabs (Ionicons) |
+| Navigation | Expo Router (file-based), Stack-over-Tabs (Ionicons) |
 | Styling | NativeWind (Tailwind CSS for React Native) |
 | State management | Zustand |
 | HTTP client | Axios |
@@ -68,7 +68,7 @@ graph TB
 | Date/time pickers | @react-native-community/datetimepicker |
 | Push notifications | expo-notifications |
 | QR scanning | expo-camera |
-| Deep linking | Expo Router file-based routes (`app/s/[id].tsx`, `app/t/[id].tsx`) |
+| Deep linking | Expo Router file-based routes (`app/(deeplinks)/s/[id].tsx`, `app/(deeplinks)/t/[id].tsx`) |
 | Network images | expo-image (uses Coil on Android — does not cache failed loads unlike React Native's Fresco) |
 | Secure storage | expo-secure-store (for JWT tokens) |
 
@@ -112,18 +112,27 @@ For the full rules, DST handling, and common pitfalls, see **[9c_feature_timezon
 
 #### Navigation
 
-Both guide and guest flows use **bottom tab navigation** (Expo Router `<Tabs>`):
+Both guide and guest flows use a **Stack-over-Tabs** architecture. Each role group (`(guide)`, `(guest)`) is a Stack navigator. The `(tabs)` layout is a Stack child containing the bottom tab navigator. Auth screens (`signin`, `signup`) and detail screens are Stack siblings of `(tabs)`, not hidden tab entries.
+
+```
+(guide)/ or (guest)/         ← Stack navigator
+├── (tabs)/                  ← Tabs navigator (tab bar visible)
+│   ├── dashboard
+│   ├── schedule / book-tour-session
+│   └── account
+├── signin                   ← Stack screen (no tab bar)
+├── signup                   ← Stack screen (no tab bar, guest only)
+├── tour-session-details     ← Stack screen pushed on top of tabs
+├── tour-booking-details     ← Stack screen pushed on top of tabs
+└── ...other detail screens
+```
 
 | Role | Tab 1 | Tab 2 | Tab 3 |
 |---|---|---|---|
-| Guide | My Tours (dashboard) | Schedule (day planner) | Profile |
-| Guest | My Tours (dashboard) | Join Tour (QR/code) | Profile |
+| Guide | My Tours (dashboard) | Schedule (day planner) | Account |
+| Guest | My Tours (dashboard) | Join Tour (QR/code) | Account |
 
-Non-tab screens are hidden from the tab bar with `href: null`:
-- **Guide**: `tour_sessions`, `tour_session_details`, `tour_session_messages`, `create_tour_template`, `create_tour_session`, `edit_tour_template`, `quick_messages`, `guide_picks`, `tip_links`, `edit_account`, `signin`
-- **Guest**: `tour_booking_details`, `join_tour_session`, `tour_session_messages`, `signin`, `signup`
-
-Auth screens (`signin`, `signup`) additionally hide the tab bar entirely via `tabBarStyle: { display: 'none' }`. This prevents unauthenticated users from tapping into protected screens.
+The tab bar is visible only on top-level tab screens and hidden on all drill-down screens (detail, create, edit, auth). Native Stack headers handle back navigation — there is no custom `useHeaderBackButton` hook.
 
 #### Returning User Auto-Skip
 
@@ -229,7 +238,7 @@ For the full flow (auto-start, boot resume, background task details, burst suppr
 
 ## QR Codes & Tour Joining
 
-QR codes encode HTTPS URLs (`https://triptoe.app/s/{session_id}` for sessions, `/t/{template_id}` for templates) that work as both deep links (app installed) and web fallbacks (app not installed). The app handles them via Expo Router file-based routes (`app/s/[id].tsx` and `app/t/[id].tsx`) which manage auth-gating, booking, confirmation, and error handling.
+QR codes encode HTTPS URLs (`https://triptoe.app/s/{session_id}` for sessions, `/t/{template_id}` for templates) that work as both deep links (app installed) and web fallbacks (app not installed). The app handles them via Expo Router file-based routes grouped under `app/(deeplinks)/` (`s/[id].tsx` and `t/[id].tsx`) which manage auth-gating, booking, confirmation, and error handling. The parenthesized route group is stripped from the URL by Expo Router, so the deep link paths remain `/s/{id}` and `/t/{id}`.
 
 Android App Links are verified via `/.well-known/assetlinks.json` on `triptoe.app`.
 

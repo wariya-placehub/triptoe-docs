@@ -86,7 +86,7 @@ Apple **rejects** apps without explicit, descriptive usage strings for every per
 
 TripToe uses background location during active tours, which is one of Apple's most-scrutinized capabilities. Review notes must explain:
 
-> During an active tour session, the guide's location is shared every 15 seconds with checked-in guests so the group can find each other. Location tracking starts only after the tour begins and stops automatically when the tour ends or when the user manually disables sharing. Location data is never collected outside of an active tour session.
+> During an active tour session, the guide's location is shared every 30 seconds with checked-in guests so the group can find each other. Location tracking starts only after the tour begins and stops automatically when the tour ends or when the user manually disables sharing. Location data is never collected outside of an active tour session.
 
 A demonstration video of the feature in action will likely be requested. Have one ready before submission.
 

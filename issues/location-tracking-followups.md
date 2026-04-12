@@ -1,6 +1,6 @@
 # Location Tracking Follow-ups
 
-## Status: All three observed items (Items 1, 2, 3) resolved 2026-04-10 evening / 2026-04-11 overnight. One new observation added (mysterious counter reset).
+## Status: Items 1, 2, 3 resolved 2026-04-10 / 2026-04-11 overnight. "Tracking stopped" oscillation resolved 2026-04-11. Mysterious counter reset still open (low priority, cosmetic). Guest "1 send then silence" zombie on `2A291FDH200DX4` still open (needs device-level investigation, not another code layer).
 ## Priority: Mixed (see each item)
 ## Affects: Guide + Guest location sharing
 
@@ -54,7 +54,9 @@ Added a heartbeat-based liveness check to `isLocationSharingActive` in `backgrou
 
 - `_taskStartedAt` — set when `startBackgroundLocationUpdates` returns
 - `_lastSuccessfulSendAt` — set inside the task callback on each confirmed successful send
-- `isLocationSharingActive` returns true iff registered AND session matches AND (inside 30s startup grace OR last success within 30s)
+- `isLocationSharingActive` returns true iff registered AND session matches AND (inside startup grace OR recent successful send)
+
+**2026-04-11 update:** `HEARTBEAT_STALE_THRESHOLD_MS` and `STARTUP_GRACE_PERIOD_MS` were later bumped from 30s to 60s when `LOCATION_UPDATE_INTERVAL_SECONDS` was raised from 15s to 30s. Both thresholds are sized at 2× the update interval so a single delayed callback doesn't trip stale.
 
 On a fresh process both timestamps are 0, so the check returns false after force-close and forces a clean restart. During sustained normal operation the heartbeat proves liveness and both syncs correctly skip the restart.
 
@@ -87,6 +89,32 @@ The second `[BG-LOC #1]` means `_taskCallCount = 0` was re-executed — which on
 **Next step:** Add a marker `console.log` at the very first line of `handleStartSharing` and at the very first line of `startBackgroundLocationUpdates`. Reproduce, check which caller is firing the second time.
 
 **Note:** Noted as an observation, not an active bug. Tracking is functionally correct. Investigation is worth doing because the same root cause might hide a worse symptom we haven't caught yet.
+
+### NEW: "Tracking stopped" warning pill oscillating on guide during sustained outage — ✅ Resolved 2026-04-11
+
+**Evidence:** With the guide phone's wifi off continuously, the "Tracking stopped" pill on the map flickered on a ~60s cycle instead of staying visible.
+
+**Cause:** The layout-level sync detects the stale heartbeat (no sends for >threshold) every 60s and restarts the task. Each restart reset `taskStartedAt = now`. `getTrackingStatus` then saw a fresh `taskStartedAt` + `lastSuccessfulSendAt === 0` and granted a new 30-second startup grace window, briefly showing `healthy`. After the grace expired it returned `stopped` again. The next layout-sync tick restarted and reset the clock. The UI flickered `stopped` → `healthy` → `stopped` → `healthy` on the same 60s cycle as the sync.
+
+**Resolution:** Added a third timestamp, `firstStartWithoutSuccessAt`. It's set the first time a start happens while `lastSuccessfulSendAt` is still 0, preserved across subsequent restarts while the no-success chain continues, and cleared only when a send actually succeeds. `getTrackingStatus` now measures its grace window from this timestamp, so the window runs once per outage rather than once per restart. `isLocationSharingActive` continues to use `taskStartedAt` — the sync layer still wants a grace window per restart for its own reasoning.
+
+**Commit:** See `src/services/backgroundLocation.ts` — `getTrackingStatus` and `_trackingState.firstStartWithoutSuccessAt`.
+
+### NEW: Guest task "1 send then silence" on this specific phone — Unresolved, needs device-level investigation
+
+**Evidence:** Observed 2026-04-11 overnight on guest phone `2A291FDH200DX4`. The background task sends exactly one record after each restart (triggered by layout sync) and then produces no further callbacks. FLP's cached-fix burst delivers one position, and subsequent scheduled 30s timer callbacks never fire. The foreground service notification remains visible — the native process is alive; the JS executor simply never receives further location events. Guide phone `4B041JEBF09348` on the same codebase, same network, shows steady periodic sends, so the codebase is not the cause.
+
+**Operational workaround:** Full uninstall + fresh install of the guest app cleared the condition. Plain `adb install -r` did not. This suggests accumulated Android system state (TaskManager persisted registration, FLP rate-limiter bookkeeping, foreground service history) that doesn't clear across reinstalls.
+
+**Unverified hypotheses:**
+
+1. **FLP throttling.** Android's Fused Location Provider rate-limits listeners that rapidly re-register. The layout sync's 60s restart loop (when heartbeat is stale) may be triggering that throttle, and once throttled the subsequent scheduled callbacks don't fire. A clean uninstall clears per-app rate limit state, which would match the observed recovery.
+2. **Battery optimization / app standby.** Not yet verified; the user reported a full battery but did not confirm the per-app battery-optimization setting.
+3. **Device-specific OEM quirk.** The phone with the symptom and the phone without may run different Android builds.
+
+**Why this is hard:** multiple hypothesis-driven fixes were attempted earlier on this same bug, each adding a layer of workaround (fetch retry, heartbeat, burst suppression, deferred 410, firstStartWithoutSuccessAt). None of them have been proven to address the underlying zombie cause. Further changes to `backgroundLocation.ts` should not be made without direct evidence tying the change to the observed symptom — the current code is already carrying a lot of interlocking workarounds.
+
+**Next step:** When the symptom re-occurs, capture `dumpsys activity services com.triptoe.mobile` and `dumpsys location` output on the affected device. Compare to the healthy device. Confirm or rule out FLP throttling before touching code.
 
 ---
 

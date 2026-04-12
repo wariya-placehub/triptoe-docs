@@ -327,10 +327,20 @@ The release build uses `.env.production` (hits Railway), not `.env` (localhost).
 
 ### Taking Screenshots
 
-```powershell
-.\snapshot.bat                 # Saves to snapshot.png
-.\snapshot.bat my_shot         # Saves to my_shot.png
+Capture the current screen of a connected device or emulator and pull it as a PNG:
+
+```bash
+adb exec-out screencap -p > screen.png
 ```
+
+If multiple devices are connected, target one explicitly with `-s <device-id>` (use `adb devices` to list them):
+
+```bash
+adb -s 2A291FDH200DX4 exec-out screencap -p > guest-screen.png
+adb -s 4B041JEBF09348 exec-out screencap -p > guide-screen.png
+```
+
+`screencap -p` writes a PNG to the device's stdout; `exec-out` streams it back over USB without going through a shell so the binary data isn't mangled by line-ending conversion. The redirect (`>`) saves it as a regular file on your machine.
 
 ### Viewing JS Logs
 
