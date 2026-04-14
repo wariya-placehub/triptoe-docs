@@ -23,6 +23,10 @@ Ship TripToe to the Apple App Store so guides and guests with iPhones can use th
 | Physical iPhone for testing | Variable | — | Used iPhone SE works fine; needed for QA before submission |
 | App Store Connect listing | Free | — | Created after Apple Developer approval |
 
+## iOS readiness from recent refactors
+
+The mobile app was refactored to a **Stack-over-Tabs** navigation architecture. Auth screens (`signin`, `signup`) and detail screens are now real Stack children, not hidden tab entries. This means iOS swipe-back gestures work natively on all screens — no custom `BackHandler` overrides or `useHeaderBackButton` hooks are needed.
+
 ## Architecture changes
 
 ### Authentication: add Sign in with Apple
@@ -94,7 +98,7 @@ A demonstration video of the feature in action will likely be requested. Have on
 
 Apple requires **in-app account deletion** for any app that supports account creation (App Store Review Guideline 5.1.1(v)). The triptoe.app web page is not sufficient — there must be a delete button reachable from inside the app.
 
-This is already required by Google Play and should already exist in `app/(guide)/account.tsx` and `app/(guest)/account.tsx`. Verify before submission.
+This is already required by Google Play and should already exist in `app/(guide)/(tabs)/account.tsx` and `app/(guest)/(tabs)/account.tsx`. Verify before submission.
 
 ## Build and submission pipeline
 

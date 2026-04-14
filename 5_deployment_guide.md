@@ -348,12 +348,15 @@ build.bat aab
 - `build.bat apk` — builds a signed APK, uploads to GCS, shows QR code to scan and install
 - `build.bat apk fast` — skips `expo prebuild`, reuses cached `android/` folder for faster builds when only JS/TS code changed (no `app.json`, plugin, or permission changes)
 - `build.bat aab` — builds a signed AAB for upload to Google Play Console
+- `build.bat --clean` — full build with aggressive cache clearing before prebuild: nukes Metro bundler cache (`node_modules/.cache`, `%TEMP%/metro-cache`, haste-map files), Gradle build output (`android/app/build`), then runs `expo prebuild --clean`. Prevents stale JS bundles from being baked into AAB/APK builds.
 
 The APK is uploaded to `gs://triptoe-apk/triptoe.apk` and downloadable at `https://storage.googleapis.com/triptoe-apk/triptoe.apk`.
 
 Requires `gcloud` configured with a `triptoe` configuration (`wariyak@gmail.com`, project `triptoe-489605`). The script switches to the triptoe config for upload and switches back to default after.
 
 **Signing:** All builds use the release keystore (`triptoe-release.keystore` in project root). Passwords are stored in `keystore.properties` (gitignored). The build script runs `scripts/patch-signing.ps1` after prebuild to inject the release signing config into the generated `build.gradle`.
+
+**R8/ProGuard:** The `expo-build-properties` plugin in `app.json` enables `enableProguardInReleaseBuilds` and `enableShrinkResourcesInReleaseBuilds`. Release builds include the deobfuscation mapping file in the AAB, which eliminates the Play Console warning about missing deobfuscation files. Crash reports in Play Console show readable stack traces.
 
 **Troubleshooting: `EBUSY: resource busy or locked` during prebuild --clean**
 

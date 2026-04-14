@@ -9,10 +9,10 @@ Companion to [2_architecture.md](2_architecture.md). Covers auth strategies, flo
 | User | First time | Returning |
 |---|---|---|
 | **Guide** | Google OAuth | Google OAuth |
-| **Guest** | Name + email + 6-digit verification code | Email + 6-digit verification code |
+| **Guest** | Email + 6-digit verification code | Email + 6-digit verification code |
 
 - **Guides** authenticate exclusively via Google OAuth. No passwords to manage.
-- **Guests** sign up with name and email, then verify via a 6-digit code sent to their email (expires in 10 minutes). Returning guests sign in with just their email and a new verification code. Both flows are designed for minimal friction (under 60 seconds for walk-up tourists).
+- **Guests** use a single unified flow: enter email, receive a 6-digit code (expires in 10 minutes), verify. The verify endpoint creates the account if the email is new, signs in if existing — there is no separate signup vs signin path. No name is collected; the backend assigns a random friendly name (e.g. "Brave Dolphin", "Sunny Koala") which the guest can change later on their profile screen. Designed for minimal friction (under 60 seconds for walk-up tourists).
 
 ## Guide Auth Flow (Google OAuth)
 
@@ -49,25 +49,21 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Email as Resend
 
-    Note over App, Email: Guest First-Time Signup
-    App->>API: POST /auth/guest/signup {name, email}
+    App->>API: POST /auth/guest/signin {email}
     API->>API: Generate 6-digit code (expires in 10 min)
     API->>DB: Store code hash + expiry
     API->>Email: Send code to guest's email
-    App->>API: POST /auth/guest/signup/verify {email, name, code}
-    API->>DB: Verify code + create Guest record
-    API->>App: {access_token, refresh_token, user}
-
-    Note over App, Email: Returning Guest Sign In
-    App->>API: POST /auth/guest/request-code {email}
+    App->>API: POST /auth/guest/signin/verify {email, code}
     API->>DB: Lookup Guest by email
-    API->>API: Generate 6-digit code (expires in 10 min)
-    API->>DB: Store code hash + expiry
-    API->>Email: Send code to guest's email
-    App->>API: POST /auth/guest/verify-code {email, code}
-    API->>DB: Verify code hash + check expiry
+    alt Guest exists
+        API->>DB: Mark verified, update active_at
+    else New email
+        API->>DB: Create Guest (name = random friendly name)
+    end
     API->>App: {access_token, refresh_token, user}
 ```
+
+The verify endpoint catches `IntegrityError` on guest creation. If two near-simultaneous verify requests for the same new email race, the second one re-queries by email and signs in cleanly instead of returning a 500.
 
 ### Verification Code Details
 
@@ -79,17 +75,26 @@ sequenceDiagram
 
 ### Guest Auth UX (Mobile)
 
-The guest signin and signup screens (`app/(guest)/signin.tsx`, `app/(guest)/signup.tsx`) follow the same two-step pattern: enter email → tap Send → enter the 6-digit code → `router.replace` to the dashboard (or the deep-link target). Several details are deliberate:
+The unified guest sign-in screen (`app/(guest)/signin.tsx`) is a single two-step flow: enter email → tap Send → enter the 6-digit code → `router.replace` to the dashboard (or the deep-link target). The same screen handles both first-time signup (creates account) and returning sign-in. Several details are deliberate:
 
 - **Email format validation** before the API call. Catches typos like a missing `@` so the backend doesn't issue a code for an unreachable address.
 - **Auto-submit** when the verification code field reaches 6 characters. Removes the "Verify" tap. Gated on `!submitting` so a backspace-and-retype during an in-flight request can't double-submit.
 - **OS keyboard auto-fill**: the code input has `textContentType="oneTimeCode"` (iOS) and `autoComplete="one-time-code"` (Android). When supported, the user taps a Gboard suggestion containing the freshly-arrived code and the auto-submit fires immediately.
-- **"Wrong email? Edit" inline link** under the email field once a code has been sent. Tapping it re-enables the email/name fields, clears the code input, and resets the resend cooldown — no need to navigate back and lose state.
-- **Inline resend control** under the verification code field. Shows "Resend in {N}s" countdown for 30 seconds after each send, then becomes a tappable "Resend code" link. Replaces the original blocking "Code Sent" Alert.
+- **"Wrong email? Edit" inline link** under the email field once a code has been sent. Tapping it re-enables the email field, clears the code input, and resets the resend cooldown — no need to navigate back and lose state.
+- **Inline resend control** under the verification code field. Shows "Resend in {N}s" countdown for 30 seconds after each send, then becomes a tappable "Resend code" link.
 - **Named tour context** when arriving via a deep link. If `pendingDeepLink` is set, the screen fetches the tour title (and start time for sessions) via the public `GET /tours/{id}` or `GET /tour-sessions/{id}` endpoint and shows "Sign in to join *Central Park Walking Tour · Apr 12, 2:00 PM*" instead of the generic "Sign in below to join your tour". Failure falls back silently to the generic copy.
-- **"Already registered" recovery on signup**: a 409 from `/auth/guest/signup` triggers an Alert offering to switch to the signin screen with the email pre-filled (via a route param read on signin via `useEffect` rather than a `useState` initializer, since `useLocalSearchParams` may not be populated on the very first render).
-- **Curated error copy.** The catch blocks for `handleVerify` and `handleSendCode` ignore the backend's literal error string and show user-facing copy. The one exception is the "expired" vs "wrong code" distinction, which is driven by checking `error.response.data.error` for the substring `expired` — robust to small wording changes between the signup-verify and sign-in-verify endpoints.
+- **Curated error copy.** The catch blocks for `handleVerify` and `handleSendCode` ignore the backend's literal error string and show user-facing copy. The one exception is the "expired" vs "wrong code" distinction, which is driven by checking `error.response.data.error` for the substring `expired`.
 - **Auth endpoints bypass the JWT refresh interceptor.** `src/services/api.ts` checks the request URL and returns `Promise.reject(error)` immediately for any `/auth/*` endpoint that 401s, so the interceptor doesn't try to refresh a non-existent token (which would surface "No refresh token" instead of the real backend error).
+
+### Friendly Name Nudge
+
+When a guest signs in, the auth store computes `hasGeneratedName` by checking if `user.name` matches the "Adjective Animal" pattern via `isGeneratedName()` in `src/utils/guestName.ts` (matches against the same 24×24 word lists as the backend's `generate_friendly_name()`). The flag is recomputed in three places:
+
+- `login()` — after a successful signin/signup
+- `restoreSession()` — on app boot
+- `updateUserName()` — after the guest saves their profile
+
+The dashboard reads `hasGeneratedName` directly from the store and shows a tappable card ("You're signed in as Brave Dolphin. Tap to set your real name.") that routes to the account screen. The account screen shows an inline hint below the name input. Both disappear permanently once the guest sets a name that does not match the generated pattern.
 
 ### Account Status
 
@@ -98,7 +103,7 @@ The `Guest.account_status` column has three values:
 | Value | Meaning |
 |---|---|
 | `'basic'` | Guest exists in the DB but has not verified email ownership. The walk-up tourist booking path at `tour_sessions.py` creates a `'basic'` guest from just a name when a guide books on their behalf. |
-| `'verified'` | Guest has proven ownership of their email by entering a verification code. Set by both `/auth/guest/signup/verify` (first-time signup) and `/auth/guest/verify-code` (returning sign-in). |
+| `'verified'` | Guest has proven ownership of their email by entering a verification code. Set by `/auth/guest/signin/verify`. |
 | `'deleted'` | Soft-deleted account. |
 
 The `is_verified()` method on the model returns `account_status == 'verified'`. As of this writing, no endpoint reads it to gate functionality — it's a design hook for future features (e.g. "verified-only" tours).
@@ -140,33 +145,34 @@ On cold start, `_layout.tsx` calls `useAuthStore.restoreSession()` which:
 
 Other effects in `_layout.tsx` and deep-link route files wait for `loading === false` before making auth decisions. This prevents a logged-in user from being briefly treated as logged out during the async restore.
 
-### Persisted Flags (Survive Logout)
+### Logout Cleanup
 
-Two flags are persisted in `SecureStore` and intentionally **not cleared on logout**:
+`logout()` clears tokens, user state, `pendingDeepLink`, and `hasGeneratedName`. It intentionally preserves `lastUserType` so the welcome screen can auto-skip for returning users.
+
+### Persisted Flag (Survives Logout)
 
 | Flag | Set when | Purpose |
 |---|---|---|
-| `has_guest_account` | Guest signs in | Deep-link routes choose "Sign In" vs "Sign Up" without an API call |
-| `last_user_type` | Any user signs in (`'guide'` or `'guest'`) | Welcome screen auto-skips to the correct signin on cold start |
+| `last_user_type` | Any user signs in (`'guide'` or `'guest'`) | Welcome screen auto-skips to the correct auth screen on cold start |
 
 ### Returning User Auto-Skip
 
 On cold start, `index.tsx` checks `lastUserType`:
 - `'guide'` → auto-redirect to `/(guide)/signin` (Google OAuth)
-- `'guest'` → auto-redirect to `/(guest)/signin` (or signup if `hasGuestAccount` is false)
+- `'guest'` → auto-redirect to `/(guest)/signin` (unified email + code)
 - `null` (first-time user) → show the welcome screen with role selection
 
-The auto-skip fires via a `useEffect` (not `useFocusEffect`) and only once per cold start (tracked via a `useRef`). If the user taps "Sign in as Guest" / "Sign in as Guide" on the signin screen, they navigate back to the welcome screen and can pick the other role.
+The auto-skip fires via a `useEffect` (not `useFocusEffect`) and only once per cold start (tracked via a `useRef`). If the user taps the "Sign in as Guide" / "Sign in as Guest" role-switch button, they navigate back to the welcome screen and can pick the other role.
 
 ### Auth Screens in the Stack
 
-Auth screens (`signin`, `signup`) are Stack siblings of `(tabs)`, not tab entries. They have no tab bar because they live outside the tab navigator entirely. `_layout.tsx` has auth-protection that redirects unauthenticated users on protected screens back to the welcome screen.
+Auth screens (`signin` for both guides and guests) are Stack siblings of `(tabs)`, not tab entries. They have no tab bar because they live outside the tab navigator entirely. `_layout.tsx`'s auth-protection guard treats `signin` and `signup` as public — any other route inside `(guide)` or `(guest)` redirects unauthenticated users back to the welcome screen.
 
 ## Auth Protection
 
 `_layout.tsx` has a `useEffect` that watches `[user, loading, segments]`:
 
-- If `user` is null and the current route is inside `(guide)` or `(guest)` (excluding signin/signup screens), redirect to `/` (welcome screen)
+- If `user` is null and the current route is inside `(guide)` or `(guest)` (excluding `signin` and `signup`), redirect to `/` (welcome screen)
 - This prevents unauthenticated access to protected screens
 
 ## Backend Auth Decorator
@@ -190,16 +196,15 @@ Both guides and guests can delete their account from the app's Account screen. T
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/auth/guide/signin` | POST | Guide Google OAuth signin/signup |
-| `/auth/guest/signup` | POST | Guest signup (send verification code) |
-| `/auth/guest/signup/verify` | POST | Verify code + create guest account |
-| `/auth/guest/request-code` | POST | Returning guest sign-in (send code) |
-| `/auth/guest/verify-code` | POST | Verify code + sign in |
+| `/auth/guest/signin` | POST | Send 6-digit code to email (works for new and existing guests) |
+| `/auth/guest/signin/verify` | POST | Verify code, create account if new, sign in if existing |
 | `/auth/refresh` | POST | Refresh access token |
-| `/auth/check-email` | POST | Check if email is already registered |
 | `/auth/guide/account` | GET/PUT | Guide profile read/update |
 | `/auth/guest/account` | GET/PUT | Guest profile read/update |
 | `/auth/account` | DELETE | Account deletion (both roles) |
 | `/auth/request-account-deletion` | POST | Request account deletion via email link |
+
+The legacy split endpoints (`/auth/guest/signup`, `/auth/guest/signup/verify`, `/auth/guest/request-code`, `/auth/guest/verify-code`) have been removed.
 
 ## Files
 
@@ -212,5 +217,6 @@ Both guides and guests can delete their account from the app's Account screen. T
 | `triptoe-mobile/src/services/auth.ts` | Auth API calls |
 | `triptoe-mobile/src/services/api.ts` | Axios instance with JWT interceptor + token refresh |
 | `triptoe-mobile/app/(guide)/signin.tsx` | Guide Google OAuth screen |
-| `triptoe-mobile/app/(guest)/signin.tsx` | Guest email + code signin |
-| `triptoe-mobile/app/(guest)/signup.tsx` | Guest name + email + code signup |
+| `triptoe-mobile/app/(guest)/signin.tsx` | Unified guest email + code screen (creates account on first verify, signs in on subsequent) |
+| `triptoe-mobile/src/components/ui/Banner.tsx` | Reusable accent-bar banner used by the friendly-name nudge |
+| `triptoe-mobile/src/utils/guestName.ts` | `isGeneratedName()` — detects backend-generated friendly names |

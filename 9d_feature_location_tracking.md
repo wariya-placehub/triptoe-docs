@@ -335,6 +335,8 @@ The `setTimeout(0)` lets the current task callback return, the finally's `notify
 
 Both update endpoints reject requests for **ended sessions** (HTTP 410 Gone). This prevents the native background task from accumulating stale data when the app is suspended past the tour end time.
 
+**Guest location consent enforcement:** The backend requires both a valid check-in AND `location_sharing_enabled=true` on that check-in before accepting guest location updates. The `location_sharing_enabled` flag is sourced from the guest's **latest check-in** record for the session, not from any recent location row. This prevents a stale or missing location row from incorrectly gating consent.
+
 ### Location Reads
 
 | Endpoint | Auth | Purpose |

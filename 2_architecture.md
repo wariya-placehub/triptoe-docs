@@ -138,6 +138,10 @@ The tab bar is visible only on top-level tab screens and hidden on all drill-dow
 
 The welcome screen (role selection) is shown only on first launch. For returning users, the app persists `lastUserType` in `SecureStore` across logout and auto-redirects to the appropriate signin screen on cold start. Users can still switch roles via "Sign in as Guest" / "Sign in as Guide" buttons on the signin screens, which navigate back to the welcome screen.
 
+#### Version Display
+
+Both guide and guest Account screens show the app version and build number at the bottom (e.g. "v1.0.0 (7)") via `expo-constants`. This helps verify which build is installed, especially when testing Play Store releases.
+
 #### Edit Navigation
 
 Edit screens use a `back_to` param to return to the originating screen:

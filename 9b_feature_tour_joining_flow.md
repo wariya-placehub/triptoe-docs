@@ -43,11 +43,8 @@ flowchart TD
     AUTH_LOADING -->|No| AUTH{User signed in?}
 
     AUTH -->|Not signed in| STASH[Stash URL as pendingDeepLink]
-    STASH --> HAS_ACCOUNT{hasGuestAccount?}
-    HAS_ACCOUNT -->|Yes| SIGNIN[Route to Guest Sign In]
-    HAS_ACCOUNT -->|No| SIGNUP[Route to Guest Sign Up]
+    STASH --> SIGNIN[Route to Guest Sign In]
     SIGNIN --> LOGIN_COMPLETE[User completes auth]
-    SIGNUP --> LOGIN_COMPLETE
     LOGIN_COMPLETE --> REPLAY[_layout.tsx replays pendingDeepLink]
     REPLAY --> ROUTER
 
@@ -57,16 +54,16 @@ flowchart TD
     AUTH -->|Signed in as guest| BOOK_API[Call bookTourByCode API]
 
     BOOK_API --> SUCCESS{API result?}
-    SUCCESS -->|200 OK| CONFIRM[Show 'Booked!' alert with tour title and date]
-    CONFIRM --> DETAILS[Route to tour-booking-details]
+    SUCCESS -->|200 OK| DETAILS[Route to tour-booking-details]
+    DETAILS --> CONFIRM[Show 'Booked!' alert on top]
 
-    SUCCESS -->|409 Already booked| ALREADY[Show 'Already Booked' alert]
-    ALREADY --> DETAILS
+    SUCCESS -->|409 Already booked| EXISTING[Route to existing booking details]
+    EXISTING --> ALREADY[Show 'Already Booked' alert on top]
 
-    SUCCESS -->|404 Session deleted| NOT_FOUND[Show 'Tour Not Found' alert]
-    NOT_FOUND --> GUEST_DASH[Route to guest dashboard]
+    SUCCESS -->|404 Session deleted| GUEST_DASH[Route to guest dashboard]
+    GUEST_DASH --> NOT_FOUND[Show 'Tour Not Found' alert on top]
 
-    SUCCESS -->|Other error| FALLBACK[Route to manual join screen]
+    SUCCESS -->|Other error| FALLBACK[Route to guest dashboard]
 ```
 
 ## Route Files
@@ -89,20 +86,17 @@ sequenceDiagram
     Camera->>Router: Open triptoe.app/s/100065
     Router->>Route: Mount with id=100065
 
-    Route->>Store: Read loading, user, hasGuestAccount
+    Route->>Store: Read loading, user
 
     alt Auth store still loading (cold boot)
         Route->>Route: Show LoadingScreen, wait for loading=false
     end
 
     alt User is null (signed out)
+        Note over Route: hasHandled ref prevents re-stash on logout
         Route->>Store: setPendingDeepLink(url)
-        alt hasGuestAccount = true
-            Route->>Screen: router.replace('/(guest)/signin')
-        else hasGuestAccount = false
-            Route->>Screen: router.replace('/(guest)/signup')
-        end
-        Note over Screen: Banner shows "Sign in below to join your tour"
+        Route->>Screen: router.replace('/(guest)/signin')
+        Note over Screen: Banner shows "Continue to join your tour"
         Note over Screen: User completes auth → pendingDeepLink replays
     else User is guide
         Route->>API: GET /tour-sessions/100065 (fetch tour details)
@@ -111,16 +105,16 @@ sequenceDiagram
     else User is guest
         Route->>API: POST /bookings/qr-scan {tour_session_id: 100065}
         alt 200 OK
-            Route->>Screen: Alert "Booked!" with tour title + date
-            Route->>Screen: router.replace('/(guest)/dashboard') then push tour-booking-details
+            Route->>Screen: router.navigate('/(guest)/dashboard') then push tour-booking-details
+            Route->>Screen: Alert "Booked!" (informational, does not block navigation)
         else 409 Conflict
-            Route->>Screen: Alert "Already Booked"
-            Route->>Screen: router.replace('/(guest)/dashboard') then push tour-booking-details
+            Route->>Screen: router.navigate('/(guest)/dashboard') then push tour-booking-details
+            Route->>Screen: Alert "Already Booked" (informational)
         else 404 Not Found
-            Route->>Screen: Alert "Tour Not Found"
-            Route->>Screen: router.replace('/(guest)/dashboard')
+            Route->>Screen: router.navigate('/(guest)/dashboard')
+            Route->>Screen: Alert "Tour Not Found" (informational)
         else Other error
-            Route->>Screen: router.replace('/(guest)/book-tour-session')
+            Route->>Screen: router.navigate('/(guest)/dashboard')
         end
     end
 ```
@@ -137,7 +131,7 @@ Simpler than the session flow — no booking API call. Routes to the dashboard f
 |---|---|
 | Guest | Navigate to guest dashboard, then push `select-tour-session` with `{ tour_template_id: id }` |
 | Guide | Fetches template title, shows alert, routes to guide dashboard |
-| Signed out | Stashes pendingDeepLink, routes to guest signin/signup |
+| Signed out | Stashes pendingDeepLink, routes to guest sign-in |
 | Cold boot | Waits for `loading === false` before deciding |
 
 ## Cloudflare Worker Fallback
@@ -163,7 +157,7 @@ Verified via `/.well-known/assetlinks.json` hosted on `triptoe.app` (Cloudflare 
 
 When a deep link arrives while the user is signed out, the URL is stashed in `useAuthStore.pendingDeepLink` (Zustand state, not persisted to disk).
 
-After the user completes signin/signup, `_layout.tsx` has a `useEffect` watching `[user, pendingDeepLink]`:
+After the user completes sign-in, `_layout.tsx` has a `useEffect` watching `[user, pendingDeepLink]`:
 
 1. `parseQRData(pendingDeepLink)` extracts the type and ID
 2. `setPendingDeepLink(null)` clears the stash
@@ -173,9 +167,14 @@ After the user completes signin/signup, `_layout.tsx` has a `useEffect` watching
 ### Clearing the pending deep link
 
 The pending link is cleared in these cases:
-- **After replay**: `_layout.tsx` clears it immediately before routing
-- **User taps "Sign in as Guide" / "Sign in as Guest"**: signin/signup role-switch button calls `setPendingDeepLink(null)` to cancel the intent and routes to the welcome screen
+- **After handler completes**: the deep link handler (`/s/[id].tsx` or `/t/[id].tsx`) clears `pendingDeepLink` at the end of its flow — in `navigateToBooking()`, guide path, and error paths. It is NOT cleared at the start or by `_layout.tsx` replay, because early clearing caused the welcome screen to race the handler.
+- **User logs out**: `logout()` in `useAuthStore` sets `pendingDeepLink: null` so a stale tour context banner does not persist on the auth screen.
+- **User taps "Sign in as Guide" / "Sign in as Guest"**: role-switch button calls `setPendingDeepLink(null)` to cancel the intent and routes to the welcome screen
 - **App killed**: `pendingDeepLink` is Zustand state only (not persisted to `SecureStore`), so it's lost on app kill
+
+### Logout re-stash guard
+
+The deep link handlers watch `[id, user, authLoading]`. When the user logs out, `user` becomes null and the effect re-fires. Without a guard, the no-user branch would re-stash the `pendingDeepLink` (which `logout()` just cleared) and redirect to auth. A `hasHandled` ref in each handler ensures the stash-and-redirect only fires once per mount — on the initial navigation, not on logout-triggered re-renders.
 
 ## Deferred Deep Linking (Install Referrer)
 
@@ -211,9 +210,36 @@ sequenceDiagram
     Note over App: User signs in, layout replay logic routes to booking
 ```
 
-**Local testing limitation**: `adb install` always returns an empty install referrer — this is a Google Play platform restriction, not a bug. The end-to-end flow can only be verified by uploading an AAB to the Play Console internal test track and installing through Play. For unit-testing the parser logic, set the SecureStore flag, manually call `useAuthStore.getState().setPendingDeepLink(...)` from a debug screen, and confirm the replay path fires correctly.
+**Local testing limitation**: `adb install` always returns an empty install referrer — this is a Google Play platform restriction, not a bug. The end-to-end flow can only be verified by uploading an AAB to the Play Console internal test track and installing through Play. To test:
+
+1. Upload AAB to Play Console (internal test track)
+2. Open the session/template URL in a phone browser (not the TripToe app)
+3. Tap Download, install from Play Store
+4. Open the app
+5. Verify: welcome is skipped, guest sign-in screen shows with tour context header
+6. Verify code and confirm tour is booked (session) or session picker shows (template)
 
 **Organic installs** (users finding the app via Play Store search, not via a QR link) have an empty referrer string and the lookup is a no-op. No harm.
+
+**R8/ProGuard**: R8 is currently disabled (`enableProguardInReleaseBuilds: false` in app.json via `expo-build-properties`). Enabling R8 strips the `react-native-play-install-referrer` native classes since they are called from JavaScript via the React Native bridge, not from Java directly. If R8 is re-enabled in the future, add ProGuard keep rules for `react-native-play-install-referrer` and test the full install referrer flow through a real Play Store install before shipping.
+
+### Install Referrer Failure Modes
+
+| Failure | What happens | User impact |
+|---|---|---|
+| Install referrer library stripped by R8 | pendingDeepLink never set | Welcome shows, user manually signs up, lands on empty dashboard (tour not booked) |
+| Referrer string empty (organic install) | Referrer returns empty string | Welcome shows normally, no auto-skip. Correct behavior. |
+| Network error fetching tour name for header | Tour label stays null | Generic header shown instead of named tour. Flow still works. |
+| User navigates back from sign-in to welcome | hasAutoSkipped is true, auto-skip does not re-fire | Welcome shows with role buttons. pendingDeepLink still set and will replay after login. |
+| User switches to guide role from sign-in | setPendingDeepLink(null) called | Deep link cleared. Guide signs in normally. Correct behavior. |
+
+### Welcome Screen Auto-Skip on Install Referrer
+
+When a `pendingDeepLink` is set on cold start (from the install referrer), the welcome screen (`index.tsx`) detects it and auto-skips directly to the guest sign-in screen. A new guest who installs via QR → Play Store → opens the app lands on the sign-in screen immediately instead of seeing the welcome/role-selection page. The tour QR acts as implicit role selection — no need for the user to manually choose "Guest."
+
+### Clearing the Tour Context Header
+
+The guest sign-in screen shows a contextual header ("Sign in to join...") when `pendingDeepLink` is set. When `pendingDeepLink` is consumed (deep link replayed after auth), the screen clears this header so it doesn't persist across logout or role switches.
 
 ## Cold Boot Race
 
@@ -225,7 +251,7 @@ When the app is **completely closed** and the user scans a QR:
 4. `restoreSession()` completes → `loading` becomes `false`
 5. `useEffect` re-runs with stable auth state → routes correctly
 
-Without this guard, a logged-in user would be briefly treated as logged out (because `user` is `null` while the store is loading), bounced to the signin screen, then replayed — causing a visual flash.
+Without this guard, a logged-in user would be briefly treated as logged out (because `user` is `null` while the store is loading), bounced to the sign-in screen, then replayed — causing a visual flash.
 
 ## In-App QR Scanner
 
@@ -241,13 +267,12 @@ The in-app scanner handles booking, 409/404 errors, and template-vs-session rout
 
 | Auth state | Session QR (`/s/{id}`) | Template QR (`/t/{id}`) |
 |---|---|---|
-| Guest (signed in) | Book → "Booked!" alert → booking details | Route to session picker |
+| Guest (signed in) | Book → booking details (alert on top) | Route to session picker |
 | Guide (signed in) | Alert with tour details → guide dashboard | Alert with tour title → guide dashboard |
-| Signed out (returning guest) | Stash → guest signin (with banner) → replay | Same |
-| Signed out (new user) | Stash → guest signup (with banner) → replay | Same |
+| Signed out (any guest) | Stash → guest sign-in (with banner) → replay | Same |
 | Signed out, taps role-switch | pendingDeepLink cleared → lands on welcome | Same |
 | Session deleted (404) | "Tour Not Found" alert → guest dashboard | N/A (template still exists) |
-| Already booked (409) | "Already Booked" alert → existing booking details | N/A (no booking at template level) |
+| Already booked (409) | Existing booking details (alert on top) | N/A (no booking at template level) |
 | Cold boot (logged in) | Waits for auth restore → processes normally | Same |
 
 ## Files
@@ -257,11 +282,11 @@ The in-app scanner handles booking, 409/404 errors, and template-vs-session rout
 | `app/(deeplinks)/s/[id].tsx` | Session deep-link route (booking, auth-gating, error handling) |
 | `app/(deeplinks)/t/[id].tsx` | Template deep-link route (session picker, auth-gating) |
 | `app/_layout.tsx` | Pending deep-link replay after login |
-| `app/(guest)/signin.tsx` | Banner when `pendingDeepLink` is set; "Sign in as Guide" button clears it |
-| `app/(guest)/signup.tsx` | Same |
+| `app/(guest)/signin.tsx` | Unified guest auth screen; banner when `pendingDeepLink` is set; "Sign in as Guide" button clears it |
 | `app/(guest)/book-tour-session.tsx` | In-app QR scanner (separate from deep-link flow) |
 | `src/utils/tourUtils.ts` | `parseQRData()` — parses both URL forms |
-| `src/stores/useAuthStore.ts` | `pendingDeepLink` state + `hasGuestAccount` flag |
+| `app/index.tsx` | Welcome screen — auto-skips to guest auth when `pendingDeepLink` is set (install referrer implicit role selection) |
+| `src/stores/useAuthStore.ts` | `pendingDeepLink` state + `hasGeneratedName` flag |
 | `triptoe-docs/site/worker.js` | Cloudflare Worker — rewrites `/s/` and `/t/` to fallback HTML |
 | `triptoe-docs/site/book-tour-session.html` | "Download TripToe" fallback for session QRs; inline JS encodes the tour ID into the Play Store referrer parameter |
 | `triptoe-docs/site/select-tour-session.html` | "Download TripToe" fallback for template QRs; inline JS encodes the tour ID into the Play Store referrer parameter |
@@ -276,3 +301,23 @@ The in-app scanner handles booking, 409/404 errors, and template-vs-session rout
 | `GET /tours/{id}` | `app/(deeplinks)/t/[id].tsx` (guide path) | Fetch template title for the guide alert |
 | `GET /tour-sessions/{id}/qr` | Guide app (QR modal) | Generate session QR code image |
 | `GET /tour-templates/{id}/qr` | Guide app (QR modal) | Generate template QR code image |
+
+## Guest Naming
+
+Guest signup does not collect a name. The backend assigns a random friendly name on account creation (e.g. "Brave Dolphin", "Sunny Koala") via `generate_friendly_name()` in `utils/auth_helpers.py`. The same generator is used for unauthenticated walk-up bookings via `/bookings/qr-scan` when no `guest_name` is provided.
+
+This avoids exposing any personal information (email prefix, real name) to the guide. Guests can update their name on the account screen at any time. Guides see the friendly name in the guest list, messages, reviews, and map markers until the guest changes it.
+
+## iOS Deep Linking
+
+The deep link handlers, auth flow, `pendingDeepLink` replay, and race condition guards are all platform-agnostic — they work unchanged on iOS.
+
+### What works on iOS without changes
+- Universal Links (Apple's equivalent of Android App Links) — Expo Router handles them through the same file-based route files
+- `app.json` `intentFilters` translate to `associatedDomains` in the iOS build config
+- All `(deeplinks)` route files, auth screen guards, welcome screen segments guard, and `_layout.tsx` replay
+
+### What requires iOS-specific work
+- **`apple-app-site-association` file** on `triptoe.app` (equivalent of `assetlinks.json` for Android). Must be hosted at `/.well-known/apple-app-site-association` via Cloudflare.
+- **Associated Domains entitlement** in `app.json` iOS config (e.g. `applinks:triptoe.app`).
+- **No install referrer API on iOS.** Apple does not provide an equivalent of Google's Install Referrer API. Deferred deep linking (QR → App Store → install → open with tour context) requires either a third-party service (Branch, AppsFlyer) or a custom solution. Without this, iOS users who install via QR will land on the welcome screen without tour context — they must re-scan the QR after installing.

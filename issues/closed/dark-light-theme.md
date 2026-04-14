@@ -45,7 +45,7 @@ const colors = useColors();
 | `textSecondary` | `#666666` | `#94a3b8` |
 | `textMuted` | `#999999` | `#64748b` |
 | `guideAccent` | `#1A4B7D` | `#75a5cf` |
-| `guestAccent` | `#82c4da` | `#a5dbed` |
+| `guestAccent` | `#2678a0` | `#a5dbed` |
 | `btnPrimary` | `#1A4B7D` | `#1A4B7D` |
 | `btnOcean` | `#5eaec8` | `#5eaec8` |
 | `success` | `#4CAF50` | `#a5d5ab` |
