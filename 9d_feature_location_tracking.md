@@ -516,8 +516,9 @@ Entries should appear every ~30 seconds with recent `recorded_at` timestamps.
 | File | Role |
 |---|---|
 | `src/services/backgroundLocation.ts` | Stateless background task definition, start/stop, burst suppression, deferred 410 stop, warning-named constants |
-| `src/services/guideLocationSync.ts` | Guide reconciliation helper. Reads active sessions from `useActiveTourStore`, ensures native task matches state. Skips restart when already healthy. |
-| `src/services/guestLocationSync.ts` | Guest reconciliation helper. Reads bookings from `/guests/my-bookings`, finds the first active booking with `location_sharing_enabled=true`, gates on `isLocationSharingActive` before calling start (skips when heartbeat proves liveness). |
+| `src/services/locationSync.ts` | Shared start/stop helpers (`ensureTrackingActive`, `stopTrackingIfOwnedByRole`) used by both role-specific syncs. Encapsulates the heartbeat-gated restart and the "only stop if I own it" check. |
+| `src/services/guideLocationSync.ts` | Guide reconciliation. Reads active sessions from `useActiveTourStore`, checks foreground permission, delegates to `locationSync` helpers. |
+| `src/services/guestLocationSync.ts` | Guest reconciliation. Reads bookings from `/guests/my-bookings`, finds the first active booking with `location_sharing_enabled=true`, checks foreground + background permission, delegates to `locationSync` helpers. |
 | `src/stores/useActiveTourStore.ts` | Zustand store: active session detection for guides (drives guide sync) |
 | `src/services/location.ts` | API calls for location read/write |
 | `src/utils/permissions.ts` | `requestFullLocationPermission()` — foreground + background |

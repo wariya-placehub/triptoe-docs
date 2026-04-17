@@ -228,21 +228,21 @@ When the keystore changes, update the SHA-1 in **TripToe Mobile** at Google Clou
 ### Building for App Stores
 
 ```bash
-# iOS (requires Apple Developer account - $99/year)
-eas build --platform ios --profile production
-
 # Android (requires Google Play Developer account - $25 one-time)
 eas build --platform android --profile production
+
+# iOS (requires Apple Developer account - $99/year)
+eas build --platform ios --profile production
 ```
 
 ### Submitting to Stores
 
 ```bash
-# iOS — submits to App Store Connect
-eas submit --platform ios
-
 # Android — submits to Google Play Console
 eas submit --platform android
+
+# iOS — submits to App Store Connect (TestFlight + App Store)
+eas submit --platform ios
 ```
 
 ### Internal Testing (Preview Builds)
@@ -250,11 +250,12 @@ eas submit --platform android
 For testing on real devices before store submission:
 
 ```bash
-# Build APK for direct install on Android devices
+# Android — builds APK for direct install (sideloading)
 eas build --platform android --profile preview
 
-# iOS (requires Apple Developer account)
+# iOS — builds to TestFlight for internal testing
 eas build --platform ios --profile preview
+eas submit --platform ios
 ```
 
 **Cancelling a build:**
@@ -305,13 +306,13 @@ eas update --branch production --message "Fix booking display"
 
 ### When to Rebuild What
 
-| Change | Backend (`railway up`) | Mobile (`build.bat`) |
-|---|---|---|
-| Backend code (Python, Dockerfile) | Yes | No |
-| Backend environment variables | No (set in Railway dashboard) | No |
-| Mobile JS/TS code only | No | `build.bat apk fast` (or `eas update` OTA) |
-| Mobile native code (new packages, app.json, android/) | No | `build.bat apk` (full build) or `eas build --clear-cache` |
-| Mobile `.env` / `.env.production` | No | Yes (full build required) |
+| Change | Backend (`railway up`) | Android (`build.bat`) | iOS (`eas build/submit`) |
+|---|---|---|---|
+| Backend code (Python, Dockerfile) | Yes | No | No |
+| Backend environment variables | No (set in Railway dashboard) | No | No |
+| Mobile JS/TS code only | No | `build.bat apk fast` (or `eas update` OTA) | `eas update` OTA (or full rebuild) |
+| Mobile native code (new packages, app.json) | No | `build.bat apk` (full build) | `eas build --platform ios` + `eas submit --platform ios` |
+| Mobile `.env` / `.env.production` | No | Yes (full build required) | Yes (full build required) |
 
 ### Backend
 
@@ -385,6 +386,8 @@ eas update --branch production --message "description of change"
 
 ### App Store Submission
 
+**Google Play (Android):**
+
 ```
 # Production build (AAB for Google Play):
 eas build --platform android --profile production
@@ -392,6 +395,32 @@ eas build --platform android --profile production
 # Submit to Google Play:
 eas submit --platform android
 ```
+
+**App Store / TestFlight (iOS):**
+
+```
+# Production build (IPA for App Store):
+eas build --platform ios --profile production
+
+# Submit to App Store Connect (goes to TestFlight first):
+eas submit --platform ios
+```
+
+After `eas submit`, the build appears in App Store Connect under **TestFlight**:
+
+- **Internal testing** — available immediately to team members added in App Store Connect (up to 100 testers, no Apple review required)
+- **External testing** — available to anyone via email invite (up to 10,000 testers, requires Apple review on first build — typically 24-48 hours)
+
+To distribute via TestFlight:
+
+1. Go to [App Store Connect](https://appstoreconnect.apple.com/) → TripToe → TestFlight
+2. For internal testing: add testers under **Internal Group** → they receive a TestFlight email invite
+3. For external testing: create an **External Group** → add testers by email → submit for review
+4. Testers open the TestFlight app on their iPhone, accept the invite, and install
+
+**Apple Developer account:** The Apple Developer Program ($99/year) is required for both TestFlight distribution and App Store publishing. The account owner is `wariyak@gmail.com`. Team testers can be added via App Store Connect → Users and Access.
+
+**iOS credentials:** EAS manages iOS signing certificates and provisioning profiles automatically. On first `eas build --platform ios`, it prompts to log in to the Apple Developer account and generates the required credentials. These are stored on Expo's servers — no local keychain or certificate management needed.
 
 ## Environment Variables Reference
 

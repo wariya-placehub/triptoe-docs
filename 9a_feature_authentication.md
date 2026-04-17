@@ -212,6 +212,8 @@ The legacy split endpoints (`/auth/guest/signup`, `/auth/guest/signup/verify`, `
 |---|---|
 | `triptoe-backend/app/routes/auth.py` | All auth endpoints |
 | `triptoe-backend/app/utils/auth_helpers.py` | UID generation, verification code helpers |
+| `triptoe-backend/app/services/google_auth_service.py` | Google ID token verification |
+| `triptoe-backend/app/services/apple_auth_service.py` | Apple identity token verification |
 | `triptoe-backend/app/services/email_service.py` | Resend API integration |
 | `triptoe-mobile/src/stores/useAuthStore.ts` | Zustand store: user state, login/logout, session restore |
 | `triptoe-mobile/src/services/auth.ts` | Auth API calls |

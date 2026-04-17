@@ -25,7 +25,16 @@ Ship TripToe to the Apple App Store so guides and guests with iPhones can use th
 
 ## iOS readiness from recent refactors
 
-The mobile app was refactored to a **Stack-over-Tabs** navigation architecture. Auth screens (`signin`, `signup`) and detail screens are now real Stack children, not hidden tab entries. This means iOS swipe-back gestures work natively on all screens — no custom `BackHandler` overrides or `useHeaderBackButton` hooks are needed.
+The mobile app was refactored to a **Stack-over-Tabs** navigation architecture. Auth screens (guide `signin`, guest `signin`) and detail screens are now real Stack children, not hidden tab entries. This means iOS swipe-back gestures work natively on all screens — no custom `BackHandler` overrides or `useHeaderBackButton` hooks are needed.
+
+Guest authentication was also unified into a single `signin` flow — email + verification code creates the account on first sign-in and signs in returning guests on subsequent ones. Guest auth is *not* third-party social login, so Apple's Sign in with Apple requirement does **not** apply to the guest flow.
+
+## Current state (baseline before iOS work begins)
+
+- `app.json` already has a partial `ios` section: `bundleIdentifier: "com.triptoe.mobile"` plus three usage strings (`NSLocationWhenInUseUsageDescription`, `NSLocationAlwaysAndWhenInUseUsageDescription`, `NSCameraUsageDescription`). The location strings are generic ("share it with your tour guide") and should be rewritten to emphasize the user-facing benefit before submission.
+- Still missing from `app.json`: `NSPhotoLibraryUsageDescription`, `UIBackgroundModes`, `buildNumber`, and the Apple sign-in entitlement.
+- In-app account deletion already exists in both `app/(guide)/(tabs)/account.tsx` and `app/(guest)/(tabs)/account.tsx` (required by Google Play; reusable for iOS).
+- Bundle identifier is **`com.triptoe.mobile`** (matches Android `package`). This is the ID to register in the Apple Developer portal. Do not change it — it must match what Android uses for brand consistency and cannot be changed after first App Store submission.
 
 ## Architecture changes
 
@@ -66,15 +75,17 @@ The app uses **Expo Push Service** as a middleware between the backend and the d
 
 ### `app.json` iOS configuration
 
+Target config to merge into the existing `ios` section of `app.json`:
+
 ```json
 "ios": {
-  "bundleIdentifier": "app.triptoe",
+  "bundleIdentifier": "com.triptoe.mobile",
   "buildNumber": "1",
   "supportsTablet": false,
   "infoPlist": {
     "NSLocationWhenInUseUsageDescription": "TripToe uses your location to share with your tour guide and group during active tours.",
     "NSLocationAlwaysAndWhenInUseUsageDescription": "TripToe uses your location in the background to keep your tour group updated during a session.",
-    "NSCameraUsageDescription": "TripToe uses your camera to take cover photos for your tours and meeting places.",
+    "NSCameraUsageDescription": "TripToe uses your camera to take cover photos for your tours and meeting places, and to scan QR codes to join tours.",
     "NSPhotoLibraryUsageDescription": "TripToe uses your photo library to upload tour cover images and meeting place photos.",
     "UIBackgroundModes": ["location", "fetch", "remote-notification"]
   },
@@ -178,7 +189,6 @@ Uploads the latest build to App Store Connect, where it goes through 10–30 min
 
 ## Open questions
 
-- Bundle identifier: `app.triptoe`? Other? This is permanent once submitted — choose carefully.
 - Will the operator/business name on the App Store listing be a personal name or a registered business entity? Affects how the developer account is set up.
 - Sign in with Apple email-relay handling: should the UI proactively warn guides that hiding their email may create a duplicate account if they later switch devices?
 - Is the support URL `triptoe.app/support` going to exist before submission, or do we need a placeholder?
