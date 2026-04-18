@@ -15,7 +15,7 @@ triptoe-mobile (Expo / React Native)  →  triptoe-backend (Flask)  →  Postgre
 
 - **Single provider** — All infrastructure runs on Railway to minimize operational complexity and cost
 - **Mobile-first** — The mobile app is the only client; there is no web frontend
-- **Self-contained auth** — Authentication is built into the backend (Google OAuth for guides, email verification codes for guests, JWT via flask-jwt-extended)
+- **Self-contained auth** — Authentication is built into the backend (Google OAuth + Apple Sign-In for guides, email verification codes for guests, JWT via flask-jwt-extended)
 - **Push via Expo** — Push notifications use Expo Push Service, which abstracts APNs and FCM
 
 ## System Architecture
@@ -177,7 +177,7 @@ Tour templates on the guide's My Tours dashboard are sorted by nearest upcoming 
 | ORM | Flask-SQLAlchemy |
 | Migrations | Raw SQL scripts (manually applied) |
 | Database | PostgreSQL + PostGIS |
-| Auth | Google OAuth (guides) + email verification code (guests) + flask-jwt-extended |
+| Auth | Google OAuth + Apple Sign-In (guides) + email verification code (guests) + flask-jwt-extended |
 | Email | Resend (verification codes for guest signup/sign-in) |
 | Push notifications | HTTP POST to Expo Push API (requires Firebase/FCM for Android delivery) |
 | File storage | Railway volume (local disk) |
@@ -230,7 +230,7 @@ The full ERD and column-level detail are in the SQLAlchemy models at `triptoe-ba
 
 ## Authentication
 
-Guides authenticate via Google OAuth. Guests authenticate via email + 6-digit verification code (sent via Resend). Both flows issue JWTs (access + refresh) managed by flask-jwt-extended, with automatic token refresh via Axios interceptors.
+Guides authenticate via Google OAuth or Apple Sign-In. Guests authenticate via email + 6-digit verification code (sent via Resend). Both flows issue JWTs (access + refresh) managed by flask-jwt-extended, with automatic token refresh via Axios interceptors.
 
 For auth flows, token strategy, session restoration, and account deletion details, see **[9a_feature_authentication.md](9a_feature_authentication.md)**.
 

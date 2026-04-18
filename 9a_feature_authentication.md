@@ -8,10 +8,10 @@ Companion to [2_architecture.md](2_architecture.md). Covers auth strategies, flo
 
 | User | First time | Returning |
 |---|---|---|
-| **Guide** | Google OAuth | Google OAuth |
+| **Guide** | Google OAuth or Apple Sign-In | Google OAuth or Apple Sign-In |
 | **Guest** | Email + 6-digit verification code | Email + 6-digit verification code |
 
-- **Guides** authenticate exclusively via Google OAuth. No passwords to manage.
+- **Guides** authenticate via Google OAuth or Apple Sign-In. No passwords to manage.
 - **Guests** use a single unified flow: enter email, receive a 6-digit code (expires in 10 minutes), verify. The verify endpoint creates the account if the email is new, signs in if existing — there is no separate signup vs signin path. No name is collected; the backend assigns a random friendly name (e.g. "Brave Dolphin", "Sunny Koala") which the guest can change later on their profile screen. Designed for minimal friction (under 60 seconds for walk-up tourists).
 
 ## Guide Auth Flow (Google OAuth)
@@ -196,6 +196,7 @@ Both guides and guests can delete their account from the app's Account screen. T
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/auth/guide/signin` | POST | Guide Google OAuth signin/signup |
+| `/auth/guide/signin/apple` | POST | Guide Apple Sign-In signin/signup |
 | `/auth/guest/signin` | POST | Send 6-digit code to email (works for new and existing guests) |
 | `/auth/guest/signin/verify` | POST | Verify code, create account if new, sign in if existing |
 | `/auth/refresh` | POST | Refresh access token |

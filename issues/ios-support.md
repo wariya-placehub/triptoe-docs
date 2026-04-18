@@ -32,7 +32,7 @@ Guest authentication was also unified into a single `signin` flow — email + ve
 ## Current state (baseline before iOS work begins)
 
 - `app.json` already has a partial `ios` section: `bundleIdentifier: "com.triptoe.mobile"` plus three usage strings (`NSLocationWhenInUseUsageDescription`, `NSLocationAlwaysAndWhenInUseUsageDescription`, `NSCameraUsageDescription`). The location strings are generic ("share it with your tour guide") and should be rewritten to emphasize the user-facing benefit before submission.
-- Still missing from `app.json`: `NSPhotoLibraryUsageDescription`, `UIBackgroundModes`, `buildNumber`, and the Apple sign-in entitlement.
+- ~~Still missing from `app.json`: `NSPhotoLibraryUsageDescription`, `UIBackgroundModes`, `buildNumber`, and the Apple sign-in entitlement.~~ **Done** — `NSPhotoLibraryUsageDescription`, `UIBackgroundModes`, `buildNumber`, and the Apple sign-in entitlement have all been added to `app.json`.
 - In-app account deletion already exists in both `app/(guide)/(tabs)/account.tsx` and `app/(guest)/(tabs)/account.tsx` (required by Google Play; reusable for iOS).
 - Bundle identifier is **`com.triptoe.mobile`** (matches Android `package`). This is the ID to register in the Apple Developer portal. Do not change it — it must match what Android uses for brand consistency and cannot be changed after first App Store submission.
 
@@ -175,17 +175,24 @@ Uploads the latest build to App Store Connect, where it goes through 10–30 min
 
 ## Order of work
 
-1. **Apple Developer signup** ($99) — start the 24–48h approval clock
-2. **Build Sign in with Apple** in parallel while waiting for Apple approval (backend + mobile + DB migration)
-3. **Verify in-app account deletion** exists for guides and guests
-4. **Configure iOS section in `app.json`** with all required permission strings and entitlements
-5. **Set up EAS Build** and configure iOS credentials
-6. **Generate APNs Auth Key** and upload to EAS
-7. **Create App Store Connect listing** with all metadata, screenshots, and copy
-8. **First EAS build → TestFlight → install on real iPhone**
-9. **Test all flows end-to-end** on a physical device — pay special attention to push notifications, background location, camera, deep links
-10. **Submit for App Store review** with thorough review notes
-11. **Iterate on rejections** — expect at least one rejection on the first submission
+1. ~~**Apple Developer signup** ($99) — start the 24–48h approval clock~~ **Done**
+2. ~~**Build Sign in with Apple** in parallel while waiting for Apple approval (backend + mobile + DB migration)~~ **Done**
+3. ~~**Verify in-app account deletion** exists for guides and guests~~ **Done**
+4. ~~**Configure iOS section in `app.json`** with all required permission strings and entitlements~~ **Done**
+5. ~~**Set up EAS Build** and configure iOS credentials~~ **Done**
+6. ~~**Generate APNs Auth Key** and upload to EAS~~ **Done** (Key ID: PY7VLSBLX5)
+7. ~~**AASA file hosted** at `triptoe.app/.well-known/apple-app-site-association`~~ **Done**
+8. ~~**Associated domains** added to `app.json`~~ **Done**
+9. **Create App Store Connect listing** with all metadata, screenshots, and copy
+10. **First EAS build → TestFlight → install on real iPhone**
+11. **Test all flows end-to-end** on a physical device:
+    - Universal Links (`triptoe.app/s/*` and `/t/*` open the app)
+    - Push notifications (guide messages arrive on guest device)
+    - Background location (sharing continues when app is backgrounded)
+    - Camera (QR scan, photo uploads)
+    - Apple Sign-In (guide auth)
+12. **Submit for App Store review** with thorough review notes
+13. **Iterate on rejections** — expect at least one rejection on the first submission
 
 ## Open questions
 

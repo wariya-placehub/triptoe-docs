@@ -433,15 +433,9 @@ On real logout:
 
 ## Permission Flow
 
-Location permission is handled in two stages:
+See [9e_feature_permissions.md](9e_feature_permissions.md) for full details on how location permissions are requested, the two-step iOS flow, guide vs guest behavior, and recovery from denied permissions.
 
-1. **Silent check** (layout-level syncs): both `syncGuideLocationTracking` and `syncGuestLocationTracking` call `Location.getForegroundPermissionsAsync()` — no prompt. If granted, tracking starts. If not, the sync bails out silently and waits.
-
-2. **Explicit prompt**:
-   - **Guide**: `tour-session-details.tsx` prompts on first visit to an active session via `requestFullLocationPermission()`. After granting, calls `syncGuideLocationTracking()` directly so tracking starts immediately without waiting for the 60-second tick.
-   - **Guest**: `tour-booking-details.tsx` prompts when the guest taps "Start Sharing Location" for the first time. After granting, `handleStartSharing` starts the task directly. Subsequent app launches find `location_sharing_enabled=true` in `/guests/my-bookings` and the guest sync auto-starts without re-prompting.
-
-Neither layout sync prompts for permission at boot. This would be jarring and would be rejected by app store review.
+Summary: layout-level syncs check permissions silently (no prompt). Explicit prompts happen on guide session details (first active session visit) and guest booking details ("Start Sharing Location" tap). Neither layout sync prompts at boot.
 
 ## Privacy
 

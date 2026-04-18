@@ -1,0 +1,22 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": [
+          "WQU7G2TWV2.com.triptoe.mobile"
+        ],
+        "components": [
+          {
+            "/": "/s/*",
+            "comment": "Tour session deep links"
+          },
+          {
+            "/": "/t/*",
+            "comment": "Tour template deep links"
+          }
+        ]
+      }
+    ]
+  }
+}
