@@ -161,9 +161,9 @@ Both the guide's tour sessions and the guest's My Tours dashboard group sessions
 |---|---|---|
 | **Today** | Sessions starting today (timezone-aware date comparison) | Ascending (soonest first) |
 | **Upcoming** | Sessions starting after today | Ascending (soonest first) |
-| **Completed** | Sessions whose end_datetime has passed | Descending (most recent first) |
+| **Completed** | Sessions whose end_at has passed | Descending (most recent first) |
 
-Bucketing uses `end_datetime` for completed (past end = completed) and timezone-aware date comparison for today. The default tab is the first non-empty one (Today → Upcoming → Completed). Auto-select resets when the session list changes (e.g., navigating to a different tour). Both guide and guest use the same client-side grouping via the `useTourSessionTabs` hook.
+Bucketing uses `end_at` for completed (past end = completed) and timezone-aware date comparison for today. The default tab is the first non-empty one (Today → Upcoming → Completed). Auto-select resets when the session list changes (e.g., navigating to a different tour). Both guide and guest use the same client-side grouping via the `useTourSessionTabs` hook.
 
 #### Guide Dashboard Sorting
 

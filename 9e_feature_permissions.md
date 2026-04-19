@@ -28,30 +28,36 @@ Covers how runtime permissions are requested, denied, and recovered across all n
 | Foreground | Single system prompt: "Allow while using the app" | Single system prompt: "Allow While Using App" |
 | Background | On Android 10: included in foreground prompt. On Android 11+: separate system prompt or Settings redirect for "Allow all the time" | Always a separate system prompt for "Always." iOS forces a two-step flow — there is no way to ask for "Always" in one step. |
 
-**The two-prompt problem (iOS and Android 11+):**
+**Guide: Two-prompt flow (iOS and Android 11+):**
 
-Users see two system dialogs about "location" back to back. Without context, this feels broken — they already said yes, why are they being asked again? To solve this, the app shows an in-app explanation alert between the two system prompts:
+Guides need background permission for locked-phone tracking. Users see two system dialogs about "location" back to back. Without context, this feels broken — they already said yes, why are they being asked again? To solve this, the app shows an in-app explanation alert between the two system prompts:
 
 ```
 [System prompt 1: "Allow While Using App" — user taps Allow]
          ↓
-[App alert: "One More Step — to share your location when your phone is locked,
- select 'Always' on the next screen." — user taps Continue]
+[App alert: "One More Step — Choose 'Always' on the next screen so TripToe
+ can keep your guide location visible if your phone locks during the tour."
+ — user taps Continue or Later]
          ↓
 [System prompt 2: "Always" — user taps Allow]
 ```
 
-If background permission is already granted (e.g. returning user), the explanation is skipped entirely.
+If background permission is already granted (e.g. returning user), the explanation is skipped entirely. If the guide taps "Later", tracking falls back to foreground-only mode (works while app is open, pauses when backgrounded).
+
+**Guest: Foreground only — no background prompt.**
+
+Guests only need foreground location permission. They are not shown the "One More Step" dialog or any background permission prompt. This matches the Uber model: riders (guests) share location while the app is open; drivers (guides) need background tracking.
 
 **Guide vs guest behavior:**
 
 | Scenario | Guide | Guest |
 |---|---|---|
-| Foreground denied | Alert with "Open Settings" only (no cancel) | Alert with "Open Settings" + "Cancel" |
-| Explanation before background prompt | "Your guests need to see your location even when your phone is locked." Only "Continue" button (no opt-out) | "To share your location when your phone is locked..." Has "Continue" and "Not Now" |
-| Background denied | Alert: "Location sharing is required for your guests to see you on the map." Only "Open Settings" (no dismiss) | Alert: "To keep sharing your location when your phone is locked..." Has "Open Settings" and "Not Now" |
+| Foreground denied | Alert with "Open Settings" + "Later" | Alert with "Open Settings" + "Cancel" |
+| Background prompt | "One More Step" explanation, then system prompt. "Later" skips (falls back to foreground tracking) | Not prompted — foreground only |
+| Background denied | Informational banner: "Guests cannot see you on the map when the app is in the background or the phone is locked." Taps to Settings | N/A |
+| All permissions denied | Alert banner: "Location is off. Guests cannot see you on the map." | No tracking (optional feature) |
 
-The guide flow has no "Cancel," "Not Now," or dismiss options at any step. Location is required — without it, guests can't see the guide on the map, which defeats the purpose of using the app.
+The guide flow offers "Later" at the background step — foreground tracking still works. Location is degraded, not broken.
 
 The guest flow always offers an opt-out. Location sharing is optional. The app still works for receiving messages, viewing tour details, checking in, and rating.
 
@@ -161,7 +167,7 @@ POST_NOTIFICATIONS, CAMERA
 |---|---|---|
 | "I already said yes, why are you asking again?" | iOS/Android 11+ two-step location flow | Shows "One More Step" explanation between the two system prompts |
 | "I clicked the wrong thing and now X doesn't work" | User denied a permission and OS won't re-prompt | Shows alert with "Open Settings" button linking directly to TripToe's settings page |
-| "Location stopped when I locked my phone" | Background location not granted ("While Using App" only) | Shows nudge to set Location to "Always" in Settings |
+| "Location stopped when I locked my phone" (guide) | Background location not granted ("While Using App" only) | Shows informational banner: "Guests cannot see you on the map when the app is in the background or the phone is locked." Taps to Settings. Foreground tracking still works while app is open. |
 | Permission prompts don't appear at all | User previously denied; OS remembers and won't re-ask | App detects this and shows "Open Settings" alert instead |
 
 ## Files

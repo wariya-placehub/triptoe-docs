@@ -82,7 +82,7 @@ BEGIN
   SELECT currval('tour.tour_template_id_seq') - 3 INTO first_template_id;
 
   -- Session 1: upcoming (tomorrow 9 AM CDT)
-  INSERT INTO tour.tour_session (tour_session_id, tour_template_id, guide_uid, start_datetime, end_datetime, allow_guest_messages, is_active)
+  INSERT INTO tour.tour_session (tour_session_id, tour_template_id, guide_uid, start_at, end_at, allow_guest_messages, is_active)
   VALUES (nextval('tour.tour_session_id_seq'), first_template_id, 'GUIDE_SEED_001',
     (CURRENT_DATE + INTERVAL '1 day' + INTERVAL '14 hours')::timestamptz,  -- 9 AM CDT = 14:00 UTC
     (CURRENT_DATE + INTERVAL '1 day' + INTERVAL '15 hours 30 minutes')::timestamptz,
@@ -90,7 +90,7 @@ BEGIN
   RETURNING tour_session_id INTO session_id_1;
 
   -- Session 2: completed (yesterday 9 AM CDT)
-  INSERT INTO tour.tour_session (tour_session_id, tour_template_id, guide_uid, start_datetime, end_datetime, allow_guest_messages, is_active)
+  INSERT INTO tour.tour_session (tour_session_id, tour_template_id, guide_uid, start_at, end_at, allow_guest_messages, is_active)
   VALUES (nextval('tour.tour_session_id_seq'), first_template_id, 'GUIDE_SEED_001',
     (CURRENT_DATE - INTERVAL '1 day' + INTERVAL '14 hours')::timestamptz,
     (CURRENT_DATE - INTERVAL '1 day' + INTERVAL '15 hours 30 minutes')::timestamptz,
@@ -98,7 +98,7 @@ BEGIN
   RETURNING tour_session_id INTO session_id_2;
 
   -- More upcoming sessions (next 3 days at 9 AM CDT)
-  INSERT INTO tour.tour_session (tour_session_id, tour_template_id, guide_uid, start_datetime, end_datetime, allow_guest_messages, is_active) VALUES
+  INSERT INTO tour.tour_session (tour_session_id, tour_template_id, guide_uid, start_at, end_at, allow_guest_messages, is_active) VALUES
   (nextval('tour.tour_session_id_seq'), first_template_id, 'GUIDE_SEED_001',
     (CURRENT_DATE + INTERVAL '2 days' + INTERVAL '14 hours')::timestamptz,
     (CURRENT_DATE + INTERVAL '2 days' + INTERVAL '15 hours 30 minutes')::timestamptz,

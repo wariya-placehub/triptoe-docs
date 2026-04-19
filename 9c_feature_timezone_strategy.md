@@ -40,8 +40,8 @@ flowchart LR
 ```typescript
 // Simplified logic
 const now = Date.now();
-const start = new Date(start_datetime).getTime();
-const end = new Date(end_datetime).getTime();
+const start = new Date(start_at).getTime();
+const end = new Date(end_at).getTime();
 
 if (now > end) return 'completed';
 if (now >= start) return 'in_progress';
