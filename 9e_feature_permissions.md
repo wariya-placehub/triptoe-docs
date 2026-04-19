@@ -53,19 +53,56 @@ Guests only need foreground location permission. They are not shown the "One Mor
 | Scenario | Guide | Guest |
 |---|---|---|
 | Foreground denied | Alert with "Open Settings" + "Later" | Alert with "Open Settings" + "Cancel" |
-| Background prompt | "One More Step" explanation, then system prompt. "Later" skips (falls back to foreground tracking) | Not prompted — foreground only |
-| Background denied | Informational banner: "Guests cannot see you on the map when the app is in the background or the phone is locked." Taps to Settings | N/A |
+| Background prompt | "One More Step" explanation, then system prompt. "Later" skips (falls back to foreground tracking) | "Tour Location Sharing" explanation, then system prompt. "Later" skips (falls back to foreground tracking) |
+| Background denied | Informational banner on Session Details: "Guests cannot see you on the map when the app is in the background or the phone is locked." Taps to Settings | No banner — foreground fallback is silent for guests |
 | All permissions denied | Alert banner: "Location is off. Guests cannot see you on the map." | No tracking (optional feature) |
 
-The guide flow offers "Later" at the background step — foreground tracking still works. Location is degraded, not broken.
+Both flows offer "Later" at the background step — foreground tracking still works. Location is degraded, not broken.
 
 The guest flow always offers an opt-out. Location sharing is optional. The app still works for receiving messages, viewing tour details, checking in, and rating.
+
+**Permission copy is platform-specific.** Android alerts include step-by-step Settings navigation ("Tap Permissions, then Location, and select 'Allow all the time'"). iOS alerts reference the system prompt directly ("Select 'Always' on the next screen").
 
 **Recovery (both roles):**
 
 If the user previously denied the permission, the OS will not show the system prompt again. In this case, `requestForegroundPermissionsAsync()` returns `denied` immediately without showing a dialog. The app detects this and shows the "Open Settings" alert, which opens TripToe's settings page where the user can toggle Location back on.
 
 **Implementation:** `src/utils/permissions.ts` — `requestFullLocationPermission(role)`
+
+**Permission prompt flow:**
+
+```mermaid
+flowchart TD
+    subgraph Guide Flow
+        G_OPEN[Guide opens active Session Details] --> G_FG{Foreground granted?}
+        G_FG -->|No| G_FG_PROMPT[System prompt: Allow location]
+        G_FG_PROMPT -->|Granted| G_BG_CHECK{Background granted?}
+        G_FG_PROMPT -->|Denied| G_FG_ALERT["Alert: Open Settings + Later"]
+        G_FG -->|Yes| G_BG_CHECK
+        G_BG_CHECK -->|Yes| G_DONE[Background tracking starts]
+        G_BG_CHECK -->|No| G_EXPLAIN["Alert: One More Step\n(step-by-step instructions)"]
+        G_EXPLAIN -->|Continue| G_BG_PROMPT[System prompt: Allow all the time]
+        G_EXPLAIN -->|Later| G_FG_ONLY[Foreground tracking starts\nInfo banner shown]
+        G_BG_PROMPT -->|Granted| G_DONE
+        G_BG_PROMPT -->|Denied| G_DENIED_ALERT["Alert: Open Settings\n(with navigation steps)"]
+        G_DENIED_ALERT --> G_FG_ONLY
+    end
+
+    subgraph Guest Flow
+        GU_TAP[Guest taps Start Sharing Location] --> GU_FG{Foreground granted?}
+        GU_FG -->|No| GU_FG_PROMPT[System prompt: Allow location]
+        GU_FG_PROMPT -->|Granted| GU_BG_CHECK{Background granted?}
+        GU_FG_PROMPT -->|Denied| GU_FG_ALERT["Alert: Open Settings + Cancel"]
+        GU_FG -->|Yes| GU_BG_CHECK
+        GU_BG_CHECK -->|Yes| GU_DONE[Background tracking starts]
+        GU_BG_CHECK -->|No| GU_EXPLAIN["Alert: Tour Location Sharing\n(step-by-step instructions)"]
+        GU_EXPLAIN -->|Continue| GU_BG_PROMPT[System prompt: Allow all the time]
+        GU_EXPLAIN -->|Later| GU_FG_ONLY[Foreground tracking starts]
+        GU_BG_PROMPT -->|Granted| GU_DONE
+        GU_BG_PROMPT -->|Denied| GU_DENIED_ALERT["Alert: Open Settings\n(with navigation steps)"]
+        GU_DENIED_ALERT --> GU_FG_ONLY
+    end
+```
 
 ### Camera
 
