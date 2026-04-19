@@ -271,18 +271,32 @@ The free tier only allows one concurrent build. A queued build won't start until
 
 **When to use `--clear-cache`:**
 
+`--clear-cache` forces EAS to discard the cached native project and regenerate it from scratch. Without it, EAS reuses the cached `android/` and `ios/` folders from the previous build, which is faster but won't pick up native config changes.
+
+Use `--clear-cache` when the change affects native code or configuration that gets baked into the binary at build time. JS/TS changes don't need it because the JavaScript bundle is rebuilt every time regardless.
+
 | Change | `--clear-cache` needed? |
 |---|---|
 | JS/TS code (components, screens, hooks, styles) | No |
 | Added/removed a package with native code (e.g., `expo-image`) | Yes |
-| Changed `app.json` (permissions, plugins, icons) | Yes |
+| Changed `app.json` — permissions, plugins, icons | Yes |
+| Changed `app.json` — `intentFilters`, `associatedDomains`, deep link paths | Yes |
+| Changed `app.json` — `infoPlist`, `UIBackgroundModes`, entitlements | Yes |
+| Added/changed `google-services.json` or `GoogleService-Info.plist` | Yes |
 | Changed files in `android/` or `ios/` directory | Yes |
 | Changed `eas.json` build profiles | Yes |
+| Changed `.env` / `.env.production` (build-time env vars) | Yes |
 
 ```bash
-# Example: after adding a new native package
+# Android — after native config changes
 eas build --platform android --profile preview --clear-cache
+
+# iOS — after native config changes
+eas build --platform ios --profile production --clear-cache
+eas submit --platform ios
 ```
+
+If unsure whether `--clear-cache` is needed, use it. The only cost is a longer build time (~5 minutes extra). Skipping it when it's needed will produce a build with stale native config — e.g., new deep link paths won't work, new permissions won't be requested, new entitlements won't be registered.
 
 The `preview` profile (defined in `eas.json`) builds an APK with `"distribution": "internal"` — this means the APK can be installed directly on any Android device (sideloading). The `production` profile builds an AAB which can only be uploaded to Google Play Store.
 

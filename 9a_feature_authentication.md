@@ -82,7 +82,7 @@ The unified guest sign-in screen (`app/(guest)/signin.tsx`) is a single two-step
 - **OS keyboard auto-fill**: the code input has `textContentType="oneTimeCode"` (iOS) and `autoComplete="one-time-code"` (Android). When supported, the user taps a Gboard suggestion containing the freshly-arrived code and the auto-submit fires immediately.
 - **"Wrong email? Edit" inline link** under the email field once a code has been sent. Tapping it re-enables the email field, clears the code input, and resets the resend cooldown — no need to navigate back and lose state.
 - **Inline resend control** under the verification code field. Shows "Resend in {N}s" countdown for 30 seconds after each send, then becomes a tappable "Resend code" link.
-- **Named tour context** when arriving via a deep link. If `pendingDeepLink` is set, the screen fetches the tour title (and start time for sessions) via the public `GET /tours/{id}` or `GET /tour-sessions/{id}` endpoint and shows "Sign in to join *Central Park Walking Tour · Apr 12, 2:00 PM*" instead of the generic "Sign in below to join your tour". Failure falls back silently to the generic copy.
+- **Named tour context** when arriving via a deep link or notification. The screen reads from the `usePendingAppIntent` intent store. For deep link intents, it fetches the tour title (and start time for sessions) via the public `GET /tours/{id}` or `GET /tour-sessions/{id}` endpoint and shows "Sign in to join *Central Park Walking Tour · Apr 12, 2:00 PM*". For notification intents, it shows "Sign in to view your message". Failure falls back silently to generic copy.
 - **Curated error copy.** The catch blocks for `handleVerify` and `handleSendCode` ignore the backend's literal error string and show user-facing copy. The one exception is the "expired" vs "wrong code" distinction, which is driven by checking `error.response.data.error` for the substring `expired`.
 - **Auth endpoints bypass the JWT refresh interceptor.** `src/services/api.ts` checks the request URL and returns `Promise.reject(error)` immediately for any `/auth/*` endpoint that 401s, so the interceptor doesn't try to refresh a non-existent token (which would surface "No refresh token" instead of the real backend error).
 
@@ -147,7 +147,7 @@ Other effects in `_layout.tsx` and deep-link route files wait for `loading === f
 
 ### Logout Cleanup
 
-`logout()` clears tokens, user state, `pendingDeepLink`, and `hasGeneratedName`. It intentionally preserves `lastUserType` so the welcome screen can auto-skip for returning users.
+`logout()` clears tokens, user state, and `hasGeneratedName`. The `usePendingAppIntent` intent store is cleared separately via `useLogoutCleanup`. `lastUserType` is intentionally preserved so the welcome screen can auto-skip for returning users.
 
 ### Persisted Flag (Survives Logout)
 

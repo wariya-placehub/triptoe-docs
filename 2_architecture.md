@@ -277,6 +277,16 @@ sequenceDiagram
     Expo-->>App: Push notification delivered
 ```
 
+### Known Limitation: Notification History Taps
+
+Tapping a TripToe notification from Android's notification history (or iOS Notification Center) does not open the app to the relevant screen. The notification appears but tapping it only opens the app to its default state.
+
+This is because Expo Push Service does not support setting a native Android `contentIntent` or `click_action` URL. Expo's `data` payload is only accessible to the JavaScript notification listener (`addNotificationResponseReceivedListener`), which fires on live taps from the notification shade but not from notification history.
+
+Live notification taps (from the shade) work correctly — the JS listener routes the user to the right screen based on the payload's `recipient_type`, `tour_session_id`, and `tour_booking_id`.
+
+To fix this, we would need to send notifications via FCM directly (bypassing Expo Push Service) with a `link` or `click_action` field in the FCM notification payload. This would require replacing `push_service.py` with direct FCM HTTP v1 API calls using the Firebase service account key.
+
 ### DeviceToken Table
 
 ```

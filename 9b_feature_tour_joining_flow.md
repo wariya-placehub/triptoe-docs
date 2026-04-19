@@ -12,7 +12,7 @@ Guides print QR codes for their tours. A guest scans the QR with their phone cam
 - **Auth state**: signed in as guest, signed in as guide, signed out (returning), signed out (new user)
 - **Session state**: valid, already booked, deleted/expired
 
-The flow is split between three systems: the **Cloudflare Worker** (web fallback), **Expo Router** (file-based deep-link routes), and the **auth store** (pending deep-link replay after login).
+The flow is split between three systems: the **Cloudflare Worker** (web fallback), **Expo Router** (file-based deep-link routes), and the **pending app intent store** (intent replay after login).
 
 ## QR Code Format
 
@@ -42,10 +42,10 @@ flowchart TD
 
     AUTH_LOADING -->|No| AUTH{User signed in?}
 
-    AUTH -->|Not signed in| STASH[Stash URL as pendingDeepLink]
+    AUTH -->|Not signed in| STASH[Stash as pending app intent]
     STASH --> SIGNIN[Route to Guest Sign In]
     SIGNIN --> LOGIN_COMPLETE[User completes auth]
-    LOGIN_COMPLETE --> REPLAY[_layout.tsx replays pendingDeepLink]
+    LOGIN_COMPLETE --> REPLAY[useAppIntentReplay resolves intent]
     REPLAY --> ROUTER
 
     AUTH -->|Signed in as guide| GUIDE_ALERT[Show 'Signed in as a guide' alert with tour details]
@@ -94,10 +94,10 @@ sequenceDiagram
 
     alt User is null (signed out)
         Note over Route: hasHandled ref prevents re-stash on logout
-        Route->>Store: setPendingDeepLink(url)
+        Route->>Store: Stash AppNavigationIntent in usePendingAppIntent
         Route->>Screen: router.replace('/(guest)/signin')
         Note over Screen: Banner shows "Continue to join your tour"
-        Note over Screen: User completes auth → pendingDeepLink replays
+        Note over Screen: User completes auth → useAppIntentReplay resolves intent
     else User is guide
         Route->>API: GET /tour-sessions/100065 (fetch tour details)
         Route->>Screen: router.replace('/(guide)/dashboard')
@@ -131,7 +131,7 @@ Simpler than the session flow — no booking API call. Routes to the dashboard f
 |---|---|
 | Guest | Navigate to guest dashboard, then push `select-tour-session` with `{ tour_template_id: id }` |
 | Guide | Fetches template title, shows alert, routes to guide dashboard |
-| Signed out | Stashes pendingDeepLink, routes to guest sign-in |
+| Signed out | Stashes app intent, routes to guest sign-in |
 | Cold boot | Waits for `loading === false` before deciding |
 
 ## Cloudflare Worker Fallback
@@ -153,28 +153,24 @@ Verified via `/.well-known/assetlinks.json` hosted on `triptoe.app` (Cloudflare 
 
 `app.json` declares intent filters for `/s/` and `/t/` path prefixes under `https://triptoe.app`.
 
-## Pending Deep Link (Post-Login Replay)
+## Pending App Intent (Post-Login Replay)
 
-When a deep link arrives while the user is signed out, the URL is stashed in `useAuthStore.pendingDeepLink` (Zustand state, not persisted to disk).
+When a deep link, install referrer, or notification tap arrives while the user is signed out, the system creates an `AppNavigationIntent` object and stashes it in the `usePendingAppIntent` store (`src/stores/usePendingAppIntent.ts`). This is Zustand state, not persisted to disk. Deep links, install referrer results, and notification taps all use the same store — there is no separate code path per source.
 
-After the user completes sign-in, `_layout.tsx` has a `useEffect` watching `[user, pendingDeepLink]`:
+After the user completes sign-in, the `useAppIntentReplay` hook (`src/hooks/useAppIntentReplay.ts`) consumes the intent and calls `resolveAppIntent()` from `src/utils/appIntentRouter.ts`. The resolver dispatches based on intent type: deep link intents route through the file-based routes (`/s/{id}`, `/t/{id}`), while notification intents use navigation helpers. Notification intents include a `recipient_type` field for role-aware routing — if the signed-in user's role doesn't match (e.g. a guide notification for a guest user), the resolver routes to the user's own dashboard instead.
 
-1. `parseQRData(pendingDeepLink)` extracts the type and ID
-2. `setPendingDeepLink(null)` clears the stash
-3. `router.replace('/s/{id}')` or `router.replace('/t/{id}')` routes to the file-based route
-4. The route file runs its normal flow (now with `user` set)
+### Clearing the pending intent
 
-### Clearing the pending deep link
-
-The pending link is cleared in these cases:
-- **After handler completes**: the deep link handler (`/s/[id].tsx` or `/t/[id].tsx`) clears `pendingDeepLink` at the end of its flow — in `navigateToBooking()`, guide path, and error paths. It is NOT cleared at the start or by `_layout.tsx` replay, because early clearing caused the welcome screen to race the handler.
-- **User logs out**: `logout()` in `useAuthStore` sets `pendingDeepLink: null` so a stale tour context banner does not persist on the auth screen.
-- **User taps "Sign in as Guide" / "Sign in as Guest"**: role-switch button calls `setPendingDeepLink(null)` to cancel the intent and routes to the welcome screen
-- **App killed**: `pendingDeepLink` is Zustand state only (not persisted to `SecureStore`), so it's lost on app kill
+The intent is cleared in these cases:
+- **After post-login replay starts**: `useAppIntentReplay` consumes the pending intent before calling `resolveAppIntent()`, so notification intents and role-mismatch fallbacks are one-shot.
+- **After deep-link route handling completes**: `/s/[id].tsx` and `/t/[id].tsx` clear the intent in their success, guide, and error paths. The deep-link intent is not cleared before the file route runs, because early clearing caused the welcome screen to race the handler.
+- **User logs out**: `useLogoutCleanup` clears the intent store so a stale tour context banner does not persist on the auth screen.
+- **User taps "Sign in as Guide" / "Sign in as Guest"**: role-switch clears the intent store and routes to the welcome screen.
+- **App killed**: intent is Zustand state only (not persisted to `SecureStore`), so it's lost on app kill.
 
 ### Logout re-stash guard
 
-The deep link handlers watch `[id, user, authLoading]`. When the user logs out, `user` becomes null and the effect re-fires. Without a guard, the no-user branch would re-stash the `pendingDeepLink` (which `logout()` just cleared) and redirect to auth. A `hasHandled` ref in each handler ensures the stash-and-redirect only fires once per mount — on the initial navigation, not on logout-triggered re-renders.
+The deep link handlers watch `[id, user, authLoading]`. When the user logs out, `user` becomes null and the effect re-fires. Without a guard, the no-user branch would re-stash the intent (which logout just cleared) and redirect to auth. A `hasHandled` ref in each handler ensures the stash-and-redirect only fires once per mount — on the initial navigation, not on logout-triggered re-renders.
 
 ## Deferred Deep Linking (Install Referrer)
 
@@ -186,7 +182,7 @@ https://play.google.com/store/apps/details?id=com.triptoe.mobile&referrer=tour_s
 
 The encoding is done client-side via a small inline script that reads `window.location.pathname` to extract the ID. The Cloudflare Worker itself is unchanged — it still serves the static HTML — but the static HTML embeds the rewriting logic.
 
-After install, the freshly-launched app reads the referrer string via Google's Install Referrer API (`react-native-play-install-referrer`), parses the `tour_session_id` or `tour_template_id` value, and constructs a synthetic `pendingDeepLink` URL (`https://triptoe.app/s/{id}` or `/t/{id}`). The existing replay path in `_layout.tsx` then takes over after sign-in — same channel as a QR scan, no separate first-install code path.
+After install, the freshly-launched app reads the referrer string via Google's Install Referrer API (`react-native-play-install-referrer`), parses the `tour_session_id` or `tour_template_id` value, and creates an `AppNavigationIntent` in the `usePendingAppIntent` store. The existing replay path via `useAppIntentReplay` then takes over after sign-in — same channel as a QR scan or notification tap, no separate first-install code path.
 
 A `SecureStore` flag (`install_referrer_consumed`) ensures the referrer is read **only once**, on the first launch after install. The flag is set **before** the async lookup so a crash mid-flow can't loop. The Install Referrer Library returns the original referrer indefinitely, so without this guard a second launch could re-fire the deep link long after the user has moved on.
 
@@ -206,8 +202,8 @@ sequenceDiagram
     Play->>Play: User installs app
     Play->>App: Stores install referrer
     App->>App: First launch — Install Referrer API returns "tour_session_id=100065"
-    App->>App: setPendingDeepLink("https://triptoe.app/s/100065")
-    Note over App: User signs in, layout replay logic routes to booking
+    App->>App: Create AppNavigationIntent in usePendingAppIntent store
+    Note over App: User signs in, useAppIntentReplay resolves intent to booking
 ```
 
 **Local testing limitation**: `adb install` always returns an empty install referrer — this is a Google Play platform restriction, not a bug. The end-to-end flow can only be verified by uploading an AAB to the Play Console internal test track and installing through Play. To test:
@@ -227,23 +223,27 @@ sequenceDiagram
 
 | Failure | What happens | User impact |
 |---|---|---|
-| Install referrer library stripped by R8 | pendingDeepLink never set | Welcome shows, user manually signs up, lands on empty dashboard (tour not booked) |
+| Install referrer library stripped by R8 | Intent never created | Welcome shows, user manually signs up, lands on empty dashboard (tour not booked) |
 | Referrer string empty (organic install) | Referrer returns empty string | Welcome shows normally, no auto-skip. Correct behavior. |
 | Network error fetching tour name for header | Tour label stays null | Generic header shown instead of named tour. Flow still works. |
-| User navigates back from sign-in to welcome | hasAutoSkipped is true, auto-skip does not re-fire | Welcome shows with role buttons. pendingDeepLink still set and will replay after login. |
-| User switches to guide role from sign-in | setPendingDeepLink(null) called | Deep link cleared. Guide signs in normally. Correct behavior. |
+| User navigates back from sign-in to welcome | hasAutoSkipped is true, auto-skip does not re-fire | Welcome shows with role buttons. Intent still set and will replay after login. |
+| User switches to guide role from sign-in | Intent store cleared | Intent cleared. Guide signs in normally. Correct behavior. |
 
 ### Welcome Screen Auto-Skip on Install Referrer
 
-When a `pendingDeepLink` is set on cold start (from the install referrer), the welcome screen (`index.tsx`) detects it and auto-skips directly to the guest sign-in screen. A new guest who installs via QR → Play Store → opens the app lands on the sign-in screen immediately instead of seeing the welcome/role-selection page. The tour QR acts as implicit role selection — no need for the user to manually choose "Guest."
+When a pending intent is set on cold start (from the install referrer, a cold-start notification tap, or a deep link), the welcome screen (`index.tsx`) checks `usePendingAppIntent.intent` and auto-skips directly to the guest sign-in screen. A new guest who installs via QR → Play Store → opens the app lands on the sign-in screen immediately instead of seeing the welcome/role-selection page. The tour QR acts as implicit role selection — no need for the user to manually choose "Guest."
 
 ### Clearing the Tour Context Header
 
-The guest sign-in screen shows a contextual header ("Sign in to join...") when `pendingDeepLink` is set. When `pendingDeepLink` is consumed (deep link replayed after auth), the screen clears this header so it doesn't persist across logout or role switches.
+The guest sign-in screen shows a contextual header when a pending intent is set. For deep link intents it shows "Sign in to join *{tour name}*"; for notification intents it shows "Sign in to view your message". When the intent is consumed (resolved after auth), the screen clears this header so it doesn't persist across logout or role switches.
+
+## Cold-Start Notification Handling
+
+When the app is launched from a notification tap while completely closed, the app reads the notification response via `getLastNotificationResponseAsync()` and creates an `AppNavigationIntent` in the `usePendingAppIntent` store. A response ID is tracked to deduplicate — `clearLastNotificationResponseAsync()` is called after reading so the same notification is not processed twice on subsequent cold starts.
 
 ## Cold Boot Race
 
-When the app is **completely closed** and the user scans a QR:
+When the app is **completely closed** and the user scans a QR (or taps a notification):
 
 1. Expo Router mounts `app/(deeplinks)/s/[id].tsx` during cold start
 2. `useAuthStore.loading` is `true` while `restoreSession()` reads from `SecureStore`
@@ -261,7 +261,7 @@ The in-app scanner handles booking, 409/404 errors, and template-vs-session rout
 
 `parseQRData()` in `src/utils/tourUtils.ts` matches both URL forms:
 - `https://triptoe.app/s/{id}` (raw QR string, used by in-app scanner)
-- `triptoe://s/{id}` (Expo-normalized scheme, used by pending deep-link replay)
+- `triptoe://s/{id}` (Expo-normalized scheme, used by intent replay)
 
 ## Auth State Matrix
 
@@ -269,8 +269,8 @@ The in-app scanner handles booking, 409/404 errors, and template-vs-session rout
 |---|---|---|
 | Guest (signed in) | Book → booking details (alert on top) | Route to session picker |
 | Guide (signed in) | Alert with tour details → guide dashboard | Alert with tour title → guide dashboard |
-| Signed out (any guest) | Stash → guest sign-in (with banner) → replay | Same |
-| Signed out, taps role-switch | pendingDeepLink cleared → lands on welcome | Same |
+| Signed out (any guest) | Stash intent → guest sign-in (with banner) → replay | Same |
+| Signed out, taps role-switch | Intent cleared → lands on welcome | Same |
 | Session deleted (404) | "Tour Not Found" alert → guest dashboard | N/A (template still exists) |
 | Already booked (409) | Existing booking details (alert on top) | N/A (no booking at template level) |
 | Cold boot (logged in) | Waits for auth restore → processes normally | Same |
@@ -281,12 +281,14 @@ The in-app scanner handles booking, 409/404 errors, and template-vs-session rout
 |---|---|
 | `app/(deeplinks)/s/[id].tsx` | Session deep-link route (booking, auth-gating, error handling) |
 | `app/(deeplinks)/t/[id].tsx` | Template deep-link route (session picker, auth-gating) |
-| `app/_layout.tsx` | Pending deep-link replay after login |
-| `app/(guest)/signin.tsx` | Unified guest auth screen; banner when `pendingDeepLink` is set; "Sign in as Guide" button clears it |
+| `src/stores/usePendingAppIntent.ts` | Zustand store for `AppNavigationIntent` — unified stash for deep links, install referrer, and notification taps |
+| `src/hooks/useAppIntentReplay.ts` | Consumes pending intent after sign-in and calls `resolveAppIntent()` |
+| `src/utils/appIntentRouter.ts` | `resolveAppIntent()` — dispatches intents to file routes (deep links) or navigation helpers (notifications) |
+| `app/(guest)/signin.tsx` | Unified guest auth screen; banner when a pending intent is set; "Sign in as Guide" button clears it |
 | `app/(guest)/book-tour-session.tsx` | In-app QR scanner (separate from deep-link flow) |
 | `src/utils/tourUtils.ts` | `parseQRData()` — parses both URL forms |
-| `app/index.tsx` | Welcome screen — auto-skips to guest auth when `pendingDeepLink` is set (install referrer implicit role selection) |
-| `src/stores/useAuthStore.ts` | `pendingDeepLink` state + `hasGeneratedName` flag |
+| `app/index.tsx` | Welcome screen — auto-skips to guest auth when a pending intent is set (install referrer / notification / deep link implicit role selection) |
+| `src/stores/useAuthStore.ts` | User state + `hasGeneratedName` flag (no longer holds pending intent) |
 | `triptoe-docs/site/worker.js` | Cloudflare Worker — rewrites `/s/` and `/t/` to fallback HTML |
 | `triptoe-docs/site/book-tour-session.html` | "Download TripToe" fallback for session QRs; inline JS encodes the tour ID into the Play Store referrer parameter |
 | `triptoe-docs/site/select-tour-session.html` | "Download TripToe" fallback for template QRs; inline JS encodes the tour ID into the Play Store referrer parameter |
@@ -310,12 +312,12 @@ This avoids exposing any personal information (email prefix, real name) to the g
 
 ## iOS Deep Linking
 
-The deep link handlers, auth flow, `pendingDeepLink` replay, and race condition guards are all platform-agnostic — they work unchanged on iOS.
+The deep link handlers, auth flow, intent replay, and race condition guards are all platform-agnostic — they work unchanged on iOS. The `usePendingAppIntent` store and `useAppIntentReplay` hook have no platform-specific code.
 
 ### What works on iOS without changes
 - Universal Links (Apple's equivalent of Android App Links) — Expo Router handles them through the same file-based route files
 - `app.json` `intentFilters` translate to `associatedDomains` in the iOS build config
-- All `(deeplinks)` route files, auth screen guards, welcome screen segments guard, and `_layout.tsx` replay
+- All `(deeplinks)` route files, auth screen guards, welcome screen segments guard, and intent replay
 
 ### What requires iOS-specific work
 - **`apple-app-site-association` file** on `triptoe.app` (equivalent of `assetlinks.json` for Android). Must be hosted at `/.well-known/apple-app-site-association` via Cloudflare.
