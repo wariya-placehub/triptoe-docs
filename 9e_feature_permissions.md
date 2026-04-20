@@ -69,39 +69,40 @@ If the user previously denied the permission, the OS will not show the system pr
 
 **Implementation:** `src/utils/permissions.ts` — `requestFullLocationPermission(role)`
 
-**Permission prompt flow:**
+**Guide permission prompt flow:**
 
 ```mermaid
 flowchart TD
-    subgraph Guide Flow
-        G_OPEN[Guide opens active Session Details] --> G_FG{Foreground granted?}
-        G_FG -->|No| G_FG_PROMPT[System prompt: Allow location]
-        G_FG_PROMPT -->|Granted| G_BG_CHECK{Background granted?}
-        G_FG_PROMPT -->|Denied| G_FG_ALERT["Alert: Open Settings + Later"]
-        G_FG -->|Yes| G_BG_CHECK
-        G_BG_CHECK -->|Yes| G_DONE[Background tracking starts]
-        G_BG_CHECK -->|No| G_EXPLAIN["Alert: One More Step\n(step-by-step instructions)"]
-        G_EXPLAIN -->|Continue| G_BG_PROMPT[System prompt: Allow all the time]
-        G_EXPLAIN -->|Later| G_FG_ONLY[Foreground tracking starts\nInfo banner shown]
-        G_BG_PROMPT -->|Granted| G_DONE
-        G_BG_PROMPT -->|Denied| G_DENIED_ALERT["Alert: Open Settings\n(with navigation steps)"]
-        G_DENIED_ALERT --> G_FG_ONLY
-    end
+    G_OPEN[Guide opens active Session Details] --> G_FG{Foreground\ngranted?}
+    G_FG -->|No| G_FG_PROMPT[System prompt:\nAllow location]
+    G_FG_PROMPT -->|Granted| G_BG_CHECK
+    G_FG_PROMPT -->|Denied| G_FG_ALERT[Alert:\nOpen Settings + Later]
+    G_FG -->|Yes| G_BG_CHECK{Background\ngranted?}
+    G_BG_CHECK -->|Yes| G_DONE[Background\ntracking starts]
+    G_BG_CHECK -->|No| G_EXPLAIN[Alert: One More Step\nwith step-by-step instructions]
+    G_EXPLAIN -->|Continue| G_BG_PROMPT[System prompt:\nAllow all the time]
+    G_EXPLAIN -->|Later| G_FG_ONLY[Foreground tracking starts\nInfo banner shown on Session Details]
+    G_BG_PROMPT -->|Granted| G_DONE
+    G_BG_PROMPT -->|Denied| G_DENIED_ALERT[Alert: Open Settings\nwith navigation steps]
+    G_DENIED_ALERT --> G_FG_ONLY
+```
 
-    subgraph Guest Flow
-        GU_TAP[Guest taps Start Sharing Location] --> GU_FG{Foreground granted?}
-        GU_FG -->|No| GU_FG_PROMPT[System prompt: Allow location]
-        GU_FG_PROMPT -->|Granted| GU_BG_CHECK{Background granted?}
-        GU_FG_PROMPT -->|Denied| GU_FG_ALERT["Alert: Open Settings + Cancel"]
-        GU_FG -->|Yes| GU_BG_CHECK
-        GU_BG_CHECK -->|Yes| GU_DONE[Background tracking starts]
-        GU_BG_CHECK -->|No| GU_EXPLAIN["Alert: Tour Location Sharing\n(step-by-step instructions)"]
-        GU_EXPLAIN -->|Continue| GU_BG_PROMPT[System prompt: Allow all the time]
-        GU_EXPLAIN -->|Later| GU_FG_ONLY[Foreground tracking starts]
-        GU_BG_PROMPT -->|Granted| GU_DONE
-        GU_BG_PROMPT -->|Denied| GU_DENIED_ALERT["Alert: Open Settings\n(with navigation steps)"]
-        GU_DENIED_ALERT --> GU_FG_ONLY
-    end
+**Guest permission prompt flow:**
+
+```mermaid
+flowchart TD
+    GU_TAP[Guest taps\nStart Sharing Location] --> GU_FG{Foreground\ngranted?}
+    GU_FG -->|No| GU_FG_PROMPT[System prompt:\nAllow location]
+    GU_FG_PROMPT -->|Granted| GU_BG_CHECK
+    GU_FG_PROMPT -->|Denied| GU_FG_ALERT[Alert:\nOpen Settings + Cancel]
+    GU_FG -->|Yes| GU_BG_CHECK{Background\ngranted?}
+    GU_BG_CHECK -->|Yes| GU_DONE[Background\ntracking starts]
+    GU_BG_CHECK -->|No| GU_EXPLAIN[Alert: Tour Location Sharing\nwith step-by-step instructions]
+    GU_EXPLAIN -->|Continue| GU_BG_PROMPT[System prompt:\nAllow all the time]
+    GU_EXPLAIN -->|Later| GU_FG_ONLY[Foreground tracking starts]
+    GU_BG_PROMPT -->|Granted| GU_DONE
+    GU_BG_PROMPT -->|Denied| GU_DENIED_ALERT[Alert: Open Settings\nwith navigation steps]
+    GU_DENIED_ALERT --> GU_FG_ONLY
 ```
 
 ### Camera
