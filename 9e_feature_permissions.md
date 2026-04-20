@@ -73,36 +73,62 @@ If the user previously denied the permission, the OS will not show the system pr
 
 ```mermaid
 flowchart TD
-    G_OPEN[Guide opens active Session Details] --> G_FG{Foreground\ngranted?}
-    G_FG -->|No| G_FG_PROMPT[System prompt:\nAllow location]
-    G_FG_PROMPT -->|Granted| G_BG_CHECK
-    G_FG_PROMPT -->|Denied| G_FG_ALERT[Alert:\nOpen Settings + Later]
-    G_FG -->|Yes| G_BG_CHECK{Background\ngranted?}
-    G_BG_CHECK -->|Yes| G_DONE[Background\ntracking starts]
-    G_BG_CHECK -->|No| G_EXPLAIN[Alert: One More Step\nwith step-by-step instructions]
-    G_EXPLAIN -->|Continue| G_BG_PROMPT[System prompt:\nAllow all the time]
-    G_EXPLAIN -->|Later| G_FG_ONLY[Foreground tracking starts\nInfo banner shown on Session Details]
-    G_BG_PROMPT -->|Granted| G_DONE
-    G_BG_PROMPT -->|Denied| G_DENIED_ALERT[Alert: Open Settings\nwith navigation steps]
-    G_DENIED_ALERT --> G_FG_ONLY
+    G_OPEN[Guide opens active\nSession Details] --> G_FG{Foreground\npermission?}
+
+    G_FG -->|Granted| G_BG{Background\npermission?}
+    G_FG -->|"Not granted\n(Ask every time /\nDon't allow /\nNot yet asked)"| G_FG_PROMPT
+
+    G_FG_PROMPT["Android shows:\nAllow TripToe to access\nthis device's location?"]
+    G_FG_PROMPT -->|Taps\nWhile using the app| G_BG
+    G_FG_PROMPT -->|Taps\nOnly this time| G_BG
+    G_FG_PROMPT -->|Taps\nDon't allow| G_FG_ALERT["TripToe shows:\nEnable Location for TripToe\nin Settings\n\nButtons: Open Settings / Later\n\nTracking does not start"]
+
+    G_BG -->|Granted| G_DONE[Background tracking starts\nNo banner]
+    G_BG -->|Not granted| G_EXPLAIN
+
+    G_EXPLAIN["TripToe shows:\nOne More Step\n\nThis ensures your guests can find\nyou on the map during the tour.\n\nTo continue, tap Permissions,\nthen Location, and select\nAllow all the time.\n\nButtons: Continue / Later"]
+    G_EXPLAIN -->|Taps Continue| G_SETTINGS["Android opens location\npermission settings"]
+    G_EXPLAIN -->|Taps Later| G_FG_ONLY["Foreground tracking starts\n\nBanner on Session Details:\nGuests cannot see you on the map\nwhen the app is in the background\nor the phone is locked."]
+
+    G_SETTINGS --> G_USER_ACTION{"Guide selects:"}
+    G_USER_ACTION -->|Allow all the time| G_DONE
+    G_USER_ACTION -->|"While using the app /\nOnly this time"| G_FG_ONLY
+    G_USER_ACTION -->|"Ask every time /\nDon't allow"| G_REVOKED["Tracking stops\n\nBanner changes to:\nLocation is off. Guests cannot\nsee you on the map.\n\nGuide can tap banner\nto open Settings"]
+    G_USER_ACTION -->|Goes back\nwithout changing| G_FG_ONLY
+
+    style G_FG_PROMPT fill:#fee2e2,stroke:#dc2626,color:#000
+    style G_EXPLAIN fill:#fef9c3,stroke:#ca8a04,color:#000
 ```
 
 **Guest permission prompt flow:**
 
 ```mermaid
 flowchart TD
-    GU_TAP[Guest taps\nStart Sharing Location] --> GU_FG{Foreground\ngranted?}
-    GU_FG -->|No| GU_FG_PROMPT[System prompt:\nAllow location]
-    GU_FG_PROMPT -->|Granted| GU_BG_CHECK
-    GU_FG_PROMPT -->|Denied| GU_FG_ALERT[Alert:\nOpen Settings + Cancel]
-    GU_FG -->|Yes| GU_BG_CHECK{Background\ngranted?}
-    GU_BG_CHECK -->|Yes| GU_DONE[Background\ntracking starts]
-    GU_BG_CHECK -->|No| GU_EXPLAIN[Alert: Tour Location Sharing\nwith step-by-step instructions]
-    GU_EXPLAIN -->|Continue| GU_BG_PROMPT[System prompt:\nAllow all the time]
-    GU_EXPLAIN -->|Later| GU_FG_ONLY[Foreground tracking starts]
-    GU_BG_PROMPT -->|Granted| GU_DONE
-    GU_BG_PROMPT -->|Denied| GU_DENIED_ALERT[Alert: Open Settings\nwith navigation steps]
-    GU_DENIED_ALERT --> GU_FG_ONLY
+    GU_TAP[Guest taps\nStart Sharing Location] --> GU_FG{Foreground\npermission?}
+
+    GU_FG -->|Granted| GU_BG{Background\npermission?}
+    GU_FG -->|"Not granted\n(Ask every time /\nDon't allow /\nNot yet asked)"| GU_FG_PROMPT
+
+    GU_FG_PROMPT["Android shows:\nAllow TripToe to access\nthis device's location?"]
+    GU_FG_PROMPT -->|Taps\nWhile using the app| GU_BG
+    GU_FG_PROMPT -->|Taps\nOnly this time| GU_BG
+    GU_FG_PROMPT -->|Taps\nDon't allow| GU_FG_ALERT["TripToe shows:\nEnable Location for TripToe\nin Settings\n\nButtons: Open Settings / Cancel\n\nTracking does not start"]
+
+    GU_BG -->|Granted| GU_DONE[Background tracking starts]
+    GU_BG -->|Not granted| GU_EXPLAIN
+
+    GU_EXPLAIN["TripToe shows:\nTour Location Sharing\n\nThis ensures your guide can find\nyou if you get separated.\n\nTo continue, tap Permissions,\nthen Location, and select\nAllow all the time.\n\nButtons: Continue / Later"]
+    GU_EXPLAIN -->|Taps Continue| GU_SETTINGS["Android opens location\npermission settings"]
+    GU_EXPLAIN -->|Taps Later| GU_FG_ONLY[Foreground tracking starts]
+
+    GU_SETTINGS --> GU_USER_ACTION{"Guest selects:"}
+    GU_USER_ACTION -->|Allow all the time| GU_DONE
+    GU_USER_ACTION -->|"While using the app /\nOnly this time"| GU_FG_ONLY
+    GU_USER_ACTION -->|"Ask every time /\nDon't allow"| GU_REVOKED["Tracking stops\n\nGuest can tap\nStart Sharing Location\nagain to re-prompt"]
+    GU_USER_ACTION -->|Goes back\nwithout changing| GU_FG_ONLY
+
+    style GU_FG_PROMPT fill:#fee2e2,stroke:#dc2626,color:#000
+    style GU_EXPLAIN fill:#fef9c3,stroke:#ca8a04,color:#000
 ```
 
 ### Camera
