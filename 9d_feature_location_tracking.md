@@ -6,17 +6,24 @@ Companion to [2_architecture.md](2_architecture.md). Covers how guide and guest 
 
 ## Overview
 
-Guide and guest use different tracking modes based on their role and permission level:
+Both guide and guest prefer background tracking when "Always" permission is granted. If only "While Using" is granted, both fall back to the foreground watcher.
 
-- **Guide with "Always" permission:** Background location task via `startLocationUpdatesAsync`. Survives phone locking, app switching, phone calls.
-- **Guide with "While Using" permission:** Foreground watcher via `watchPositionAsync`. Tracks while the app is open, pauses when backgrounded.
-- **Guest:** Always uses the foreground watcher. No background permission required.
+- **"Always" permission:** Background location task via `startLocationUpdatesAsync`. Survives phone locking, app switching, phone calls.
+- **"While Using" permission:** Foreground watcher via `watchPositionAsync`. Tracks while the app is open.
 
-Both modes use a shared `forwardLocationUpdate()` helper for the actual API send, ensuring consistent retry logic, throttling, 410 handling, and heartbeat updates.
+Both modes use a shared `forwardLocationUpdate()` helper for the actual API send, ensuring consistent retry logic, throttling, 410 handling, and heartbeat updates. Each location record includes a `tracking_mode` field (`background` or `foreground`) for debugging and auditing.
 
 ### Why two modes?
 
-The original design had a single tracking path — background location task requiring "Always" permission. If the user only granted "While Using", the app got zero tracking, even while the user was actively looking at it. This matches how Uber handles driver tracking: background when "Always" is granted, foreground fallback when only "While Using" is available. Riders (guests in TripToe) only need foreground.
+The original design had a single tracking path — background location task requiring "Always" permission. If the user only granted "While Using", the app got zero tracking, even while the user was actively looking at it.
+
+### Known limitation: Android permission downgrade
+
+On Android, when a user downgrades from "Allow all the time" to "While using the app", the native `LocationTaskService` started by expo-location may survive JS-level stop calls (`stopLocationUpdatesAsync` + `unregisterTaskAsync`). This service keeps the app process alive, which prevents the foreground watcher from pausing when the app is backgrounded. Location updates continue even when the user switches to another app.
+
+- **"Don't allow"** is enforced immediately by Android at the OS level — no app-side fix needed.
+- **"While using the app"** downgrade from "Allow all the time" may leave a zombie service. Only "Force stop" from App Info reliably kills it. Swiping from recents does not.
+- A backend permission guard was considered and tested but did not change any observed outcome — the zombie sends with `mode=foreground`, which is indistinguishable from a legitimate foreground send.
 
 ## How It Works
 
@@ -24,13 +31,11 @@ The original design had a single tracking path — background location task requ
 
 1. Guest checks into a tour session (check-in does **not** auto-start location sharing)
 2. Guest explicitly taps "Start Sharing Location" once to opt in — this sets `location_sharing_enabled=true` on their check-in record
-3. App requests **foreground location permission only** — no "One More Step" background prompt
-4. `startForegroundLocationUpdates(tourSessionId, 'guest')` begins sending to `POST /location/update` via `forwardLocationUpdate()`
+3. App requests foreground + background location permission with tour-specific copy ("Tour Location Sharing" dialog)
+4. If "Always" is granted → background tracking. If "While Using" → foreground fallback. Mode selection handled by `ensureTrackingActive()`.
 5. The guest's layout-level sync (`syncGuestLocationTracking`) keeps tracking alive on every 60-second tick, on app foreground, and on layout mount — independent of which screen the guest is on
 6. Guest taps "Stop Sharing" or the tour ends → tracking stops
 7. Sharing preference is **sticky**: `location_sharing_enabled` on the booking's check-in survives across app restarts. On the next app launch, the layout-level sync reads it from `/guests/my-bookings` and auto-starts tracking without the guest having to tap anything.
-
-**Guest tracking pauses when the app is backgrounded** (phone locked, app switched). This is acceptable — guests are tourists with the app open. Updates resume when the guest returns to the app.
 
 ### Guide
 
@@ -159,18 +164,20 @@ When the backend returns HTTP 410 (tour ended), calling `stopLocationUpdatesAsyn
 
 ## Scenario Matrix
 
-| Scenario | Guide (Always) | Guide (While Using) | Guest |
-|---|---|---|---|
-| App in foreground | Tracking | Tracking | Tracking |
-| App in background / phone locked | **Tracking** | **Pauses** | **Pauses** |
-| Phone restarts during tour | Resumes via layout sync | Resumes via layout sync | Resumes via layout sync |
-| App crash / OS kills app | Resumes on reopen | Resumes on reopen | Resumes on reopen |
-| User on different screen | Continues | Continues | Continues |
-| Phone call during tour | Continues | Pauses (resumes after) | Pauses (resumes after) |
-| Tour ends while backgrounded | 410 → deferred stop | 410 → deferred stop | 410 → stop |
-| Bad connection < 5 min | Still visible on map | Still visible on map | Still visible on map |
-| Bad connection > 5 min | Disappears from map | Disappears from map | Disappears from map |
-| Logout during active tour | Stops immediately | Stops immediately | Stops immediately |
+| Scenario | Always (guide or guest) | While Using (guide or guest) |
+|---|---|---|
+| App in foreground | Tracking | Tracking |
+| App in background / phone locked | **Tracking** | **Should pause** (see known limitation) |
+| Phone restarts during tour | Resumes via layout sync | Resumes via layout sync |
+| App crash / OS kills app | Resumes on reopen | Resumes on reopen |
+| User on different screen | Continues | Continues |
+| Phone call during tour | Continues | Should pause (resumes after) |
+| Tour ends while backgrounded | 410 → deferred stop | 410 → deferred stop |
+| Bad connection < 5 min | Still visible on map | Still visible on map |
+| Bad connection > 5 min | Disappears from map | Disappears from map |
+| Logout during active tour | Stops immediately | Stops immediately |
+| Downgrade Always → While Using | Switches to foreground on next sync | N/A |
+| Downgrade to Don't allow | Android stops tracking immediately | Android stops tracking immediately |
 
 ## Backend Endpoints
 
@@ -239,8 +246,8 @@ On real logout (user was set, then became null): calls `stopAllLocationUpdates()
 
 See [9e_feature_permissions.md](9e_feature_permissions.md) for full details. Summary:
 
-- **Guide:** Prompted for foreground + background on first active session visit. If background is denied, tracking falls back to foreground mode with an informational banner.
-- **Guest:** Prompted for foreground only on "Start Sharing Location" tap. No background prompt, no "One More Step" dialog.
+- **Guide:** Prompted for foreground + background on first active session visit ("One More Step" dialog). If background is denied, tracking falls back to foreground mode with an informational banner.
+- **Guest:** Prompted for foreground + background on "Start Sharing Location" tap ("Tour Location Sharing" dialog). If background is denied, foreground fallback. Banner shown on booking details when sharing is active: "Location is off" (denied) or "For reliable sharing when your phone is locked, allow location all the time" (foreground only).
 - **Layout syncs** check permissions silently (no prompt). Explicit prompts happen only on the screens above.
 
 ## Privacy
@@ -260,18 +267,21 @@ adb logcat -s ReactNativeJS
 
 Key log patterns:
 
+- `[BG-TASK #N] Callback fired` — native background task delivered a location event
 - `[BG-LOC] Start called (reason=..., session=...)` — background task starting
 - `[BG-LOC #N] Sent (guide session=...)` — background task sent location
 - `[FG-LOC] Start called (reason=..., session=...)` — foreground watcher starting
 - `[FG-LOC #N] Sent (guide session=...)` — foreground watcher sent location
 - `[FG-LOC] KILLING background task before foreground start` — switching from background to foreground mode
-- `[GUIDE-SYNC] === SYNC CHECK ===` — detailed sync state dump (permission, mode, registration)
+- `[GUIDE-SYNC] === SYNC CHECK ===` — detailed sync state dump (permission, mode, registration, persisted session)
+- `[GUIDE-SYNC] DOWNGRADING background → foreground` — permission downgrade detected
+- `[LIFECYCLE] AppState changed: background` — app went to background
 - `[LOC] Stopping all (reason=...)` — all tracking stopped
 
 To verify data reaches the backend:
 
 ```sql
-SELECT recorded_at, latitude, longitude
+SELECT recorded_at, latitude, longitude, tracking_mode
 FROM guide.guide_location
 WHERE tour_session_id = <id>
 ORDER BY recorded_at DESC
@@ -291,12 +301,12 @@ adb shell dumpsys activity services com.triptoe.mobile | findstr LocationTaskSer
 | `src/services/backgroundLocation.ts` | Background task, foreground watcher, shared `forwardLocationUpdate()`, heartbeat, start/stop |
 | `src/services/locationSync.ts` | Mode selection, upgrade/downgrade, zombie cleanup (`ensureTrackingActive`) |
 | `src/services/guideLocationSync.ts` | Guide reconciliation — reads active sessions, delegates to `ensureTrackingActive` |
-| `src/services/guestLocationSync.ts` | Guest reconciliation — reads bookings, foreground permission only |
+| `src/services/guestLocationSync.ts` | Guest reconciliation — reads bookings, checks foreground permission as minimum gate |
 | `src/stores/useActiveTourStore.ts` | Zustand store: active session detection for guides |
 | `src/services/location.ts` | API calls for location read/write |
-| `src/utils/permissions.ts` | `requestFullLocationPermission()` — guide gets foreground + background, guest gets foreground only |
+| `src/utils/permissions.ts` | `requestFullLocationPermission()` — both roles get foreground + background prompt |
 | `app/_layout.tsx` | Guide + guest sync effects, logout cleanup |
 | `app/(guide)/tour-session-details.tsx` | Permission prompt, permission-based banner, tracking status display |
-| `app/(guest)/tour-booking-details.tsx` | "Start Sharing" button, uses centralized `startForegroundLocationUpdates` |
+| `app/(guest)/tour-booking-details.tsx` | "Start Sharing" button, delegates to `ensureTrackingActive` for mode selection |
 | `src/components/tour/TourMapView.tsx` | Map component — inline markers with Android-specific `tracksViewChanges` tuning |
 | `src/components/guest/GuestLocationSection.tsx` | Guest map — native blue dot via `showsUserLocation` |
