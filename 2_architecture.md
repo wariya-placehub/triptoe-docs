@@ -63,6 +63,7 @@ graph TB
 | State management | Zustand |
 | HTTP client | Axios |
 | Maps | react-native-maps (Google Maps native) |
+| Places search | Google Places API (New) — autocomplete for Guide's Picks map links |
 | Location | expo-location (foreground + background) |
 | Timezone detection | expo-localization (device timezone auto-detect) |
 | Date/time pickers | @react-native-community/datetimepicker |

@@ -225,6 +225,16 @@ Two OAuth credentials in **APIs & Services** → **Credentials**:
 
 When the keystore changes, update the SHA-1 in **TripToe Mobile** at Google Cloud Console.
 
+### Google Maps & Places API
+
+Same Google Cloud project (`triptoe-489605`). API key in `app.json` under `android.config.googleMaps.apiKey`.
+
+Enabled APIs:
+- **Maps SDK for Android** — renders maps in the mobile app
+- **Places API (New)** — autocomplete search for Guide's Picks map links
+
+Cost: Maps SDK is free up to $200/month credit. Places Autocomplete is ~$2.83 per 1,000 requests.
+
 ### Building for App Stores
 
 ```bash
