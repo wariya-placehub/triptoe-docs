@@ -28,7 +28,8 @@ TripToe provides two connected experiences:
 - **Create Tour Templates** — Define reusable tours with a title, description, duration, meeting point (with map coordinates), and cover image (auto-cropped to square thumbnail).
 - **Create Tour Sessions** — Pick dates and times for specific occurrences of a template. Each session gets a unique QR code for guest check-in. Each template also has a persistent "Share Tour" QR code that lets guests browse and join upcoming sessions.
 - **Track guests in real-time** — See every guest's location on a live map during the tour session. Know immediately if someone falls behind or goes the wrong way.
-- **Send messages** — Push text messages to all guests or to individual guests within a session. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies.
+- **Send announcements** — Broadcast text messages to all guests within a session. Useful for instructions ("We're moving to the next stop"), alerts ("Meet back here in 15 minutes"), or emergencies. Announcements and direct messages are separate activity types in the guide's inbox.
+- **Direct messaging** — Reply privately to individual guests from the inbox or session details. Each guest has their own conversation thread with the guide.
 - **Audio broadcast** (planned) — Broadcast voice to all guests' phones during the tour session, replacing expensive radio equipment.
 - **Post-tour engagement** — After the session ends, upload group photos for guests, view guest reviews and ratings, and collect tips via an external payment link (Venmo, PayPal, etc.).
 - **Guide's Picks** — Curate a persistent list of local recommendations (restaurants, bars, sights, shops, activities) that guests automatically see after a completed tour. Each pick has a name, category, optional personal note, and optional map link.
@@ -38,7 +39,7 @@ TripToe provides two connected experiences:
 - **Quick signup** — Designed for walk-up tourists. Minimal friction to create an account and join a tour session within minutes.
 - **Join via QR code** — Scan the guide's QR code to instantly join the tour session. No searching, no typing codes.
 - **Location sharing** — Opt-in to share location during the tour session so the guide can keep track of the group. Location sharing stops automatically when the session ends.
-- **Receive messages** — Get real-time messages from the guide on your phone. Never miss an instruction.
+- **Receive and reply to messages** — Get real-time announcements and direct messages from the guide. Reply directly from the chat screen within the messaging window (48 hours before to 48 hours after the tour).
 - **Listen to audio** (planned) — Hear the guide's broadcast directly on your phone, even in noisy environments.
 - **Rate and review** — Leave a star rating and optional review after the tour session ends.
 - **View group photos** — Access group photos uploaded by the guide after the session.
@@ -152,7 +153,7 @@ Template Created  →  Session Created  →  Guests Check In  →  Tour Active  
 ```
 
 - **Location tracking** is active only during the tour session window
-- **Messages** can be sent during the active tour
+- **Messaging** is available within a 48-hour window before and after the tour (announcements and direct messages)
 - **Post-tour features** (reviews, group photos, tips) are available after completion
 
 ### Platform
@@ -183,8 +184,10 @@ Implemented in the existing codebase and will carry over.
 - QR code generation for guest check-in (per session and persistent per template)
 - Multiple check-ins per tour session (start, after free time, etc.)
 - Real-time guest and guide location tracking on interactive map with labeled markers
-- Broadcast and direct messaging to guests
-- Quick messages (reusable message presets)
+- Announcements (to all guests) and direct messaging (per-guest threads)
+- Guide inbox with unified view of announcements and DM threads, filterable by status (Reply, Live, Upcoming, Recent)
+- Quick messages (reusable message presets, available in chat composer)
+- Messaging window: 48 hours before to 48 hours after the tour; composer disabled with explanatory copy outside the window
 - Guide's Picks: curate local recommendations (eat, drink, see, shop, do) with optional notes and map links
 - Post-tour: upload group photos, view guest ratings and reviews
 - Post-tour push notification (30 min after tour ends) nudging guests to view guide's picks
@@ -196,7 +199,7 @@ Implemented in the existing codebase and will carry over.
 - Session selection from template QR (browse and join upcoming sessions)
 - Check-in to tour sessions
 - Location sharing (background) with automatic stop when tour ends
-- Receive push notifications and in-app messages from guide
+- Receive and reply to guide messages (announcements + direct) within the 48h messaging window
 - Booking management
 - Post-tour: star rating and review, view group photos, tip guide via external link, browse guide's local recommendations
 

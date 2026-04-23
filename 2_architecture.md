@@ -128,10 +128,10 @@ Both guide and guest flows use a **Stack-over-Tabs** architecture. Each role gro
 └── ...other detail screens
 ```
 
-| Role | Tab 1 | Tab 2 | Tab 3 |
-|---|---|---|---|
-| Guide | My Tours (dashboard) | Schedule (day planner) | Account |
-| Guest | My Tours (dashboard) | Join Tour (QR/code) | Account |
+| Role | Tab 1 | Tab 2 | Tab 3 | Tab 4 |
+|---|---|---|---|---|
+| Guide | My Tours (dashboard) | Schedule (day planner) | Inbox (announcements + DMs) | Account |
+| Guest | My Tours (dashboard) | Join Tour (QR/code) | -- | Account |
 
 The tab bar is visible only on top-level tab screens and hidden on all drill-down screens (detail, create, edit, auth). Native Stack headers handle back navigation — there is no custom `useHeaderBackButton` hook.
 
@@ -241,6 +241,47 @@ Both guide and guest use `expo-location` background location updates via a share
 
 For the full flow (auto-start, boot resume, background task details, burst suppression, deferred 410 stop, map polling, privacy, and documented pitfalls), see **[9d_feature_location_tracking.md](9d_feature_location_tracking.md)**.
 
+## Messaging
+
+### Activity Types
+
+Messaging has two distinct activity types sharing the same `message` table:
+
+| Type | Scope | Derived from | UI treatment |
+|---|---|---|---|
+| **Announcement** | Session-level, guide to all guests | `recipient_uid IS NULL` | Megaphone icon, "Announcement" badge, distinct bubble color |
+| **Direct message** | Guest-level, guide-to-guest or guest-to-guide | `recipient_uid IS NOT NULL` | Guest avatar, private thread |
+
+### Messaging Window
+
+All messaging is gated by a 48-hour window: 48 hours before the tour starts to 48 hours after the tour ends. Outside the window, the composer is replaced with a lock icon and the window open/close time. The backend enforces the same window with a 403 response.
+
+### Guide Inbox
+
+The guide's Inbox tab (`GET /messaging/inbox`) returns both activity types in a single sorted list:
+- **Announcement rows**: one per session with announcements, showing count and latest preview
+- **DM rows**: one per (guest, session) thread, showing unread count and needs_reply flag
+
+Sorting: needs_reply DMs first, then all rows by last_activity_at descending.
+
+Filter chips: All, Reply, Live, Upcoming, Recent.
+
+### Chat Screen
+
+The guide chat screen operates in two modes based on the presence of `guest_uid`:
+- **Announcement mode** (no `guest_uid`): shows only announcements for that session, composer says "Announce to group...", quick message chips available above the input
+- **DM mode** (with `guest_uid`): shows only the direct thread between guide and that guest
+
+The guest chat screen shows all messages visible to the guest (announcements + direct messages to/from the guest) with a reply input.
+
+### Keyboard Layout
+
+`KeyboardProvider` from `react-native-keyboard-controller` sets `adjustNothing` at runtime, overriding `softwareKeyboardLayoutMode: "resize"` from `app.json`. The chat screen uses `KeyboardStickyView` for the input bar and a dynamic footer spacer (`keyboardHeight`) to make the FlatList content scrollable past the keyboard.
+
+### Push Notification Routing
+
+Direct message notifications include `sender_uid` and `sender_name` in the push payload. When a guide taps a DM notification, the app navigates directly to the chat screen with that guest's thread (not session details). Broadcast notifications route to session details. If the chat screen is opened via notification without session context (start_at/end_at), it fetches the session metadata to populate the header and messaging window check.
+
 ## QR Codes & Tour Joining
 
 QR codes encode HTTPS URLs (`https://triptoe.app/s/{session_id}` for sessions, `/t/{template_id}` for templates) that work as both deep links (app installed) and web fallbacks (app not installed). The app handles them via Expo Router file-based routes grouped under `app/(deeplinks)/` (`s/[id].tsx` and `t/[id].tsx`) which manage auth-gating, booking, confirmation, and error handling. The parenthesized route group is stripped from the URL by Expo Router, so the deep link paths remain `/s/{id}` and `/t/{id}`.
@@ -284,7 +325,7 @@ Tapping a TripToe notification from Android's notification history (or iOS Notif
 
 This is because Expo Push Service does not support setting a native Android `contentIntent` or `click_action` URL. Expo's `data` payload is only accessible to the JavaScript notification listener (`addNotificationResponseReceivedListener`), which fires on live taps from the notification shade but not from notification history.
 
-Live notification taps (from the shade) work correctly — the JS listener routes the user to the right screen based on the payload's `recipient_type`, `tour_session_id`, and `tour_booking_id`.
+Live notification taps (from the shade) work correctly -- the JS listener routes the user to the right screen based on the payload's `recipient_type`, `tour_session_id`, and for direct messages, `sender_uid` and `sender_name` (which route guides directly to the guest's chat thread). Guest notifications route directly to the chat screen.
 
 To fix this, we would need to send notifications via FCM directly (bypassing Expo Push Service) with a `link` or `click_action` field in the FCM notification payload. This would require replacing `push_service.py` with direct FCM HTTP v1 API calls using the Firebase service account key.
 
@@ -316,8 +357,8 @@ device_token
 | `/api/v1/checkins` | Guest check-in, update location sharing preference |
 | `/api/v1/location` | Guest + guide location updates, stop sharing |
 | `/api/v1/reviews` | Guest review submission, guide review retrieval |
-| `/api/v1/messages` | Broadcast and direct messaging |
-| `/api/v1/messaging` | Quick message management (guide's reusable message presets) |
+| `/api/v1/messages` | Direct messaging and mixed activity feed; `GET /tour-sessions/<id>/announcements` for announcements only |
+| `/api/v1/messaging` | Quick message management, guide inbox (`GET /messaging/inbox` returns announcement + DM rows) |
 | `/api/v1/guide-picks` | Guide's Picks CRUD, reorder, and public retrieval by guide UID |
 | `/api/v1/operators` | Operator management |
 | `/api/v1/device-token` | Push notification token registration |
